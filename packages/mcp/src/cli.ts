@@ -2,6 +2,7 @@
 import { runSetup } from "./setup.js";
 import { start } from "./runner.js";
 import { PACKAGE_VERSION } from "./version.js";
+import { banner, dim } from "./ui.js";
 
 const HELP = `Usage:
   npx motionworks              Start the MotionWorks WebSocket bridge (port 52340)
@@ -55,6 +56,8 @@ async function main(): Promise<void> {
 
   if (first === "init") {
     const yes = args.includes("--yes") || args.includes("-y");
+    process.stdout.write(`${banner(PACKAGE_VERSION)}\n`);
+    process.stdout.write(`  ${dim(`Setting up in ${process.cwd()}`)}\n\n`);
     const { setupOutcomes, initOutcomes } = await runSetup({
       cwd: process.cwd(),
       packageVersion: PACKAGE_VERSION,

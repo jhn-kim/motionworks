@@ -10,6 +10,7 @@ import {
   writeInstructionFile,
   type InstructionFile,
 } from "./claude-md.js";
+import { cyan, dim, gray, green, step, symbols, yellow } from "./ui.js";
 
 export type InitOutcome =
   | { kind: "created"; file: InstructionFile; path: string }
@@ -49,7 +50,8 @@ export async function confirm(
 ): Promise<boolean> {
   const rl = createInterface({ input, output, terminal: false });
   try {
-    const answer = (await rl.question(`${question} `)).trim().toLowerCase();
+    const prompt = `${cyan("?")} ${question} ${gray("(y/n)")} `;
+    const answer = (await rl.question(prompt)).trim().toLowerCase();
     return answer === "y" || answer === "yes";
   } finally {
     rl.close();
@@ -73,6 +75,18 @@ export function diffStanzas(oldStanza: string, newStanza: string): string {
     }
   }
   return lines.join("\n");
+}
+
+/** Tint a diff produced by diffStanzas: added lines green, removed lines amber. */
+function colorizeDiff(diff: string): string {
+  return diff
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("+ ")) return green(line);
+      if (line.startsWith("- ")) return yellow(line);
+      return dim(line);
+    })
+    .join("\n");
 }
 
 /**
@@ -147,7 +161,7 @@ async function initFile({
   if (existing === null) {
     if (!yes) {
       const ok = await confirm(
-        `${file} does not exist in ${cwd}. Create it with the MotionWorks instructions stanza? [y/N]`,
+        `${file} does not exist in ${cwd}. Create it with the MotionWorks instructions stanza?`,
         input,
         output,
       );
@@ -156,7 +170,7 @@ async function initFile({
       }
     }
     await writeInstructionFile(cwd, file, `${newStanza}\n`);
-    log(`Wrote MotionWorks instructions stanza to ${path}`);
+    log(step(symbols.done, `Wrote instructions stanza to ${dim(path)}`));
     return { kind: "created", file, path };
   }
 
@@ -165,7 +179,7 @@ async function initFile({
   if (!scan.present) {
     if (!yes) {
       const ok = await confirm(
-        `Append MotionWorks instructions stanza to ${path}? [y/N]`,
+        `Append MotionWorks instructions stanza to ${path}?`,
         input,
         output,
       );
@@ -176,7 +190,7 @@ async function initFile({
     const sep = existing.endsWith("\n") ? "" : "\n";
     const nextContents = `${existing}${sep}\n${newStanza}\n`;
     await writeInstructionFile(cwd, file, nextContents);
-    log(`Appended MotionWorks instructions stanza to ${path}`);
+    log(step(symbols.done, `Appended instructions stanza to ${dim(path)}`));
     return { kind: "appended", file, path };
   }
 
@@ -184,6 +198,9 @@ async function initFile({
   const cmp = compareVersions(existingVersion, packageVersion);
 
   if (cmp === 0) {
+    log(
+      step(symbols.skipped, `${dim(path)} stanza already at v${packageVersion}`),
+    );
     return {
       kind: "skipped-same-version",
       file,
@@ -195,7 +212,10 @@ async function initFile({
   if (cmp > 0) {
     // Existing stanza is newer than the installed package — leave it alone.
     log(
-      `${file} stanza (v${existingVersion}) is newer than installed motionworks@${packageVersion}. Not overwriting.`,
+      step(
+        symbols.skipped,
+        `${dim(path)} stanza (v${existingVersion}) is newer than motionworks@${packageVersion} — not overwriting`,
+      ),
     );
     return {
       kind: "skipped-same-version",
@@ -207,18 +227,17 @@ async function initFile({
 
   // Older stanza → replace with confirmation.
   const oldStanza = existing.slice(scan.startIndex!, scan.endIndex!);
-  const diff = diffStanzas(oldStanza, newStanza);
+  const diff = colorizeDiff(diffStanzas(oldStanza, newStanza));
   log(
-    `MotionWorks stanza in ${path} is v${existingVersion}; installed version is ${packageVersion}. Proposed change:`,
+    step(
+      symbols.updated,
+      `${dim(path)} stanza is v${existingVersion}; installed is v${packageVersion}. Proposed change:`,
+    ),
   );
   log(diff);
 
   if (!yes) {
-    const ok = await confirm(
-      "Replace the existing stanza? [y/N]",
-      input,
-      output,
-    );
+    const ok = await confirm("Replace the existing stanza?", input, output);
     if (!ok) {
       return { kind: "cancelled", file, path, reason: "user declined" };
     }
@@ -229,7 +248,10 @@ async function initFile({
   const nextContents = `${before}${newStanza}${after}`;
   await writeInstructionFile(cwd, file, nextContents);
   log(
-    `Replaced MotionWorks stanza in ${file} (v${existingVersion} → v${packageVersion})`,
+    step(
+      symbols.done,
+      `Replaced stanza in ${dim(file)} ${dim(`(v${existingVersion} → v${packageVersion})`)}`,
+    ),
   );
   return {
     kind: "replaced",

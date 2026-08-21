@@ -9,6 +9,7 @@ import {
   type InitOptions,
   type InitOutcome,
 } from "./init.js";
+import { cyan, dim, heading, step, symbols } from "./ui.js";
 
 export type SetupOutcome =
   | { kind: "mcp-json-created"; path: string }
@@ -88,6 +89,7 @@ export async function ensureMcpJson(options: {
       ? (existing["mcpServers"] as Record<string, unknown>)
       : {};
   if ("motionworks" in servers) {
+    log(step(symbols.skipped, `${dim(path)} already has the MCP server entry`));
     return { kind: "mcp-json-already-configured", path };
   }
 
@@ -95,8 +97,8 @@ export async function ensureMcpJson(options: {
   if (!yes) {
     const ok = await confirm(
       creating
-        ? `Create ${path} with the MotionWorks MCP server entry? [y/N]`
-        : `Add the MotionWorks MCP server entry to ${path}? [y/N]`,
+        ? `Create ${path} with the MotionWorks MCP server entry?`
+        : `Add the MotionWorks MCP server entry to ${path}?`,
       input,
       output,
     );
@@ -108,7 +110,10 @@ export async function ensureMcpJson(options: {
   next["mcpServers"] = { ...servers, motionworks: MCP_SERVER_ENTRY };
   await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
   log(
-    `${creating ? "Created" : "Updated"} ${path} with the motionworks MCP server`,
+    step(
+      symbols.done,
+      `${creating ? "Created" : "Updated"} ${dim(path)} — MotionWorks MCP server`,
+    ),
   );
   return { kind: creating ? "mcp-json-created" : "mcp-json-updated", path };
 }
@@ -136,10 +141,9 @@ export async function ensureReactInstalled(options: {
 
   const pkg = await readJsonFile(join(cwd, "package.json"));
   if (pkg === null) {
-    return {
-      kind: "react-skipped",
-      reason: `no package.json in ${cwd} — run init from your app's root to install @motionworks/react`,
-    };
+    const reason = `no package.json in ${cwd} — run init from your app's root to install @motionworks/react`;
+    log(step(symbols.skipped, `Skipped @motionworks/react — ${dim(reason)}`));
+    return { kind: "react-skipped", reason };
   }
 
   const deps = {
@@ -147,20 +151,20 @@ export async function ensureReactInstalled(options: {
     ...(pkg["devDependencies"] as Record<string, string> | undefined),
   };
   if ("@motionworks/react" in deps) {
+    log(step(symbols.skipped, "@motionworks/react already installed"));
     return { kind: "react-already-installed" };
   }
   if (!("react" in deps)) {
-    return {
-      kind: "react-skipped",
-      reason:
-        "project does not depend on react — install a MotionWorks framework package manually",
-    };
+    const reason =
+      "project does not depend on react — install a MotionWorks framework package manually";
+    log(step(symbols.skipped, `Skipped @motionworks/react — ${dim(reason)}`));
+    return { kind: "react-skipped", reason };
   }
 
   const { packageManager, argv } = detectInstallCommand(lockfiles);
   if (!yes) {
     const ok = await confirm(
-      `Install @motionworks/react with ${packageManager}? [y/N]`,
+      `Install @motionworks/react with ${packageManager}?`,
       input,
       output,
     );
@@ -168,12 +172,18 @@ export async function ensureReactInstalled(options: {
       return { kind: "cancelled", step: "install", reason: "user declined" };
   }
 
-  log(`Installing @motionworks/react with ${packageManager}...`);
+  log(step(symbols.updated, dim(`Installing @motionworks/react with ${packageManager}…`)));
   const exitCode = await run(argv, cwd);
   if (exitCode !== 0) {
+    log(
+      step(
+        symbols.failed,
+        `@motionworks/react install failed (${packageManager} exited ${exitCode})`,
+      ),
+    );
     return { kind: "react-install-failed", packageManager, exitCode };
   }
-  log("Installed @motionworks/react");
+  log(step(symbols.done, `Installed @motionworks/react ${dim(`with ${packageManager}`)}`));
   return { kind: "react-installed", packageManager };
 }
 
@@ -237,17 +247,17 @@ export async function runSetup(
         o.kind === "react-installed" || o.kind === "react-already-installed",
     );
     log("");
-    log("Next steps:");
+    log(heading("Next steps"));
     if (mountNeeded) {
       log(
-        "  1. Mount the overlay once in your app (it renders nothing in production):",
+        `  ${cyan("1.")} Mount the overlay once in your app ${dim("(renders nothing in production)")}:`,
       );
       log("");
-      log(PROVIDER_SNIPPET);
+      log(dim(PROVIDER_SNIPPET));
       log("");
-      log("  2. Restart your agent session so it picks up .mcp.json.");
+      log(`  ${cyan("2.")} Restart your agent session so it picks up .mcp.json.`);
     } else {
-      log("  1. Restart your agent session so it picks up .mcp.json.");
+      log(`  ${cyan("1.")} Restart your agent session so it picks up .mcp.json.`);
     }
   }
 
