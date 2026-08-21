@@ -3,7 +3,6 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/react" },
-    { "path": "./packages/mcp" },
-    { "path": "./examples/demo" }
+    { "path": "./packages/mcp" }
   ]
 }
