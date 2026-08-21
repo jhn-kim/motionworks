@@ -1,6 +1,6 @@
 {
   "name": "motionworks",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "CLI and MCP server for MotionWorks",
   "license": "MIT",
   "private": false,
@@ -23,6 +23,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "prepack": "tsup",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },

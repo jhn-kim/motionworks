@@ -1,6 +1,6 @@
 {
   "name": "@motionworks/react",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "React bindings for MotionWorks",
   "license": "MIT",
   "private": false,
@@ -20,6 +20,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "prepack": "tsup",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
