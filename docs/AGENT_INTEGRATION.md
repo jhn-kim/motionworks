@@ -60,16 +60,18 @@ MCP resources are pull-based — there is no mechanism in Claude Code (or the MC
 
 ### Layer 1: Instruction-file stanza (setup-time, reliable)
 
-Running `npx motionworks init` once during project setup performs full project setup — it adds the MCP server entry to `.mcp.json`, installs `@motionworks/react` in React projects, and appends a versioned, sentinel-delimited block to the project's agent instruction files (`--stanza-only` limits it to the stanza; every step is confirmed before running and skipped when already done): `CLAUDE.md` (read automatically by Claude Code at every session start) and `AGENTS.md` (read by Codex CLI and other AGENTS.md-convention agents). This is the most reliable path for ensuring instructions are always in context without any runtime agent action.
+Running `npx motionworks init` once during project setup performs full project setup — it adds the MCP server entry to `.mcp.json`, installs `@motionworks/react` in React projects, and writes the agent instructions (`--stanza-only` limits it to the instructions; every step is confirmed before running and skipped when already done). To keep the instruction files small, the full schema emission guide is written to a standalone **`MOTIONWORKS.md`**, and the project's agent instruction files receive only a short, versioned, sentinel-delimited **reference stanza** pointing at it: `CLAUDE.md` (read automatically by Claude Code at every session start) and `AGENTS.md` (read by Codex CLI and other AGENTS.md-convention agents). This is the most reliable path for ensuring instructions are always reachable without any runtime agent action, while keeping `CLAUDE.md` uncluttered and `init` upgrade diffs down to a couple of lines.
 
 **Target selection:** with no flags, `init` updates every instruction file that already exists; when neither exists, it creates `CLAUDE.md`. The `--claude` and `--agents` flags target a file explicitly and create it if missing (e.g. `npx motionworks init --agents` for a Codex-only project starting fresh).
 
 **What `init` does, per targeted file (implemented in `packages/mcp/src/init.ts` / `claude-md.ts`):**
 - Creates the file (with confirmation) if it doesn't exist and was explicitly targeted.
-- Checks for the sentinel markers before writing — running `init` repeatedly never duplicates the stanza. A stanza already at the installed version exits silently.
+- Checks for the sentinel markers before writing — running `init` repeatedly never duplicates the reference stanza. A stanza already at the installed version exits silently.
 - On an older stanza, prints a line diff and asks for confirmation before replacing. A stanza *newer* than the installed package is left alone.
 - Accepts `--yes` to skip confirmations for non-interactive environments.
 - Never touches anything outside the sentinels.
+
+Whenever a stanza is created, appended, or replaced, `init` also (re)generates `MOTIONWORKS.md` — the standalone, `init`-owned file holding the full guide, tagged with the same version marker. It is written once per run (not per instruction file) and left untouched when every target was skipped, so a guide newer than the installed package is never downgraded.
 
 **Drift detection on server startup:** When `npx motionworks` starts, it scans every instruction file that exists and logs a warning (to stderr) listing each one whose stanza is absent or outdated. A file that doesn't exist is not demanded — a Claude-only project without `AGENTS.md` is fine; the warning also fires when no instruction file exists at all:
 
@@ -101,20 +103,17 @@ This is the content the `CLAUDE.md` stanza and `motionworks_get_instructions` bo
 
 You are working in a project that uses MotionWorks for motion design.
 
-**Mounting the overlay (one-time project setup).** The overlay only appears if `@motionworks/react` is mounted, and it must be mounted in **its own React root from a client component**. Never render `<MotionWorksProvider>` inside a React Server Component (a Next.js App Router `layout.tsx` or `page.tsx`) — the provider uses client-only hooks and will crash the server render. Mount it dev-only via dynamic import so it never ships to production:
+**Mounting the overlay (one-time project setup).** The overlay only appears if `@motionworks/react` is mounted, in **its own React root from a client component**. Never render `<MotionWorksProvider>` inside a Server Component (a Next.js App Router `layout.tsx`/`page.tsx`) — it uses client-only hooks and crashes the server render. Mount it dev-only so it never ships to production, and render `<MotionWorksBoot />` once from your layout:
 
 ```tsx
 'use client';
 import { useEffect } from 'react';
 
-// Render <MotionWorksBoot /> once, high in the tree (e.g. app/layout.tsx).
-// It renders nothing; it mounts the overlay into its own root so the overlay
-// survives HMR reloads that tear down and recreate the app's component tree.
 export function MotionWorksBoot(): null {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
-    const w = window as typeof window & { __motionworksRoot?: { unmount(): void } };
-    if (w.__motionworksRoot) return; // survive StrictMode double-invoke + HMR
+    const w = window as typeof window & { __motionworksRoot?: unknown };
+    if (w.__motionworksRoot) return; // one overlay root; survive StrictMode + HMR
     let disposed = false;
     void Promise.all([import('@motionworks/react'), import('react-dom/client')]).then(
       ([{ MotionWorksProvider }, { createRoot }]) => {
@@ -127,15 +126,13 @@ export function MotionWorksBoot(): null {
         w.__motionworksRoot = root;
       },
     );
-    return () => {
-      disposed = true;
-    };
+    return () => { disposed = true; };
   }, []);
   return null;
 }
 ```
 
-Rendering `<MotionWorksBoot />` from a Server Component is safe because the boot component is itself a Client Component. In a non-Next app (Vite, CRA), run the same dev-only mount directly in your client entry — no wrapper needed.
+In a non-Next app (Vite, CRA), run the same dev-only mount directly in your client entry.
 
 When you implement a motion effect on a DOM element, you must also emit a MotionWorks registration. This is not optional — without it, the designer cannot visually refine the effect.
 

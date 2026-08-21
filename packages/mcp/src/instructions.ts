@@ -10,20 +10,17 @@ export const SCHEMA_EMISSION_GUIDE = `**[MotionWorks schema emission guide]**
 
 You are working in a project that uses MotionWorks for motion design.
 
-**Mounting the overlay (one-time project setup).** The overlay only appears if \`@motionworks/react\` is mounted, and it must be mounted in **its own React root from a client component**. Never render \`<MotionWorksProvider>\` inside a React Server Component (a Next.js App Router \`layout.tsx\` or \`page.tsx\`) — the provider uses client-only hooks and will crash the server render. Mount it dev-only via dynamic import so it never ships to production:
+**Mounting the overlay (one-time project setup).** The overlay only appears if \`@motionworks/react\` is mounted, in **its own React root from a client component**. Never render \`<MotionWorksProvider>\` inside a Server Component (a Next.js App Router \`layout.tsx\`/\`page.tsx\`) — it uses client-only hooks and crashes the server render. Mount it dev-only so it never ships to production, and render \`<MotionWorksBoot />\` once from your layout:
 
 \`\`\`tsx
 'use client';
 import { useEffect } from 'react';
 
-// Render <MotionWorksBoot /> once, high in the tree (e.g. app/layout.tsx).
-// It renders nothing; it mounts the overlay into its own root so the overlay
-// survives HMR reloads that tear down and recreate the app's component tree.
 export function MotionWorksBoot(): null {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
-    const w = window as typeof window & { __motionworksRoot?: { unmount(): void } };
-    if (w.__motionworksRoot) return; // survive StrictMode double-invoke + HMR
+    const w = window as typeof window & { __motionworksRoot?: unknown };
+    if (w.__motionworksRoot) return; // one overlay root; survive StrictMode + HMR
     let disposed = false;
     void Promise.all([import('@motionworks/react'), import('react-dom/client')]).then(
       ([{ MotionWorksProvider }, { createRoot }]) => {
@@ -36,15 +33,13 @@ export function MotionWorksBoot(): null {
         w.__motionworksRoot = root;
       },
     );
-    return () => {
-      disposed = true;
-    };
+    return () => { disposed = true; };
   }, []);
   return null;
 }
 \`\`\`
 
-Rendering \`<MotionWorksBoot />\` from a Server Component is safe because the boot component is itself a Client Component. In a non-Next app (Vite, CRA), run the same dev-only mount directly in your client entry — no wrapper needed.
+In a non-Next app (Vite, CRA), run the same dev-only mount directly in your client entry.
 
 When you implement a motion effect on a DOM element, you must also emit a MotionWorks registration. This is not optional — without it, the designer cannot visually refine the effect.
 

@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
+import { GUIDE_FILE } from "./claude-md.js";
 import {
   confirm,
   runInit,
@@ -196,10 +197,6 @@ function spawnAndWait(argv: string[], cwd: string): Promise<number> {
   });
 }
 
-const PROVIDER_SNIPPET = `  import { MotionWorksProvider } from '@motionworks/react';
-
-  <MotionWorksProvider />`;
-
 export interface SetupResult {
   setupOutcomes: SetupOutcome[];
   initOutcomes: InitOutcome[];
@@ -250,11 +247,8 @@ export async function runSetup(
     log(heading("Next steps"));
     if (mountNeeded) {
       log(
-        `  ${cyan("1.")} Mount the overlay once in your app ${dim("(renders nothing in production)")}:`,
+        `  ${cyan("1.")} Mount the overlay once in your app — follow "Mounting the overlay" in ${cyan(GUIDE_FILE)} ${dim("(dev-only; renders nothing in production)")}.`,
       );
-      log("");
-      log(dim(PROVIDER_SNIPPET));
-      log("");
       log(`  ${cyan("2.")} Restart your agent session so it picks up .mcp.json.`);
     } else {
       log(`  ${cyan("1.")} Restart your agent session so it picks up .mcp.json.`);

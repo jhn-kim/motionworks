@@ -3,10 +3,14 @@ import type { Readable, Writable } from "node:stream";
 
 import {
   compareVersions,
+  guideFilePath,
   INSTRUCTION_FILES,
+  readGuideFile,
   readInstructionFile,
+  renderGuideDoc,
   renderStanza,
   scanClaudeMd,
+  writeGuideFile,
   writeInstructionFile,
   type InstructionFile,
 } from "./claude-md.js";
@@ -134,6 +138,29 @@ export async function runInit(options: InitOptions): Promise<InitOutcome[]> {
       await initFile({ cwd, file, packageVersion, yes, input, output, log }),
     );
   }
+
+  // Whenever we actually wrote or advanced a reference stanza, (re)generate the
+  // companion guide file it points at. We never touch it when every target was
+  // skipped (already current, or an existing stanza newer than this package) so
+  // we can't downgrade a newer guide or re-litter a declined install.
+  const advanced = outcomes.some(
+    (o) =>
+      o.kind === "created" || o.kind === "appended" || o.kind === "replaced",
+  );
+  if (advanced) {
+    const desired = renderGuideDoc(packageVersion);
+    const current = await readGuideFile(cwd);
+    if (current !== desired) {
+      await writeGuideFile(cwd, desired);
+      log(
+        step(
+          symbols.done,
+          `${current === null ? "Wrote" : "Updated"} the MotionWorks guide → ${dim(guideFilePath(cwd))}`,
+        ),
+      );
+    }
+  }
+
   return outcomes;
 }
 
