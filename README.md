@@ -20,17 +20,13 @@ AI coding agents are good at creating motion from a description. They are slow a
 
 ## Quickstart
 
-The fastest path is to let your coding agent do the setup. Paste this into Claude Code (or any agent with terminal access):
-
-> Set up MotionWorks in this project: install @motionworks/react, mount MotionWorksProvider at the app root, add a "motionworks" MCP server to .mcp.json with command "npx" and args ["-y", "@motionworks/mcp"], then run npx motionworks init --yes.
-
-Or by hand. In a React 19 project:
+In your project root:
 
 ```bash
-npm install @motionworks/react
+npx motionworks init
 ```
 
-Mount the overlay once (it renders nothing in production):
+This sets up everything: adds the MCP server to `.mcp.json`, installs `@motionworks/react`, and writes the agent instructions. Each step asks before it runs. Then mount the overlay once (it renders nothing in production), and restart your agent session so it picks up the MCP server:
 
 ```tsx
 import { MotionWorksProvider } from "@motionworks/react";
@@ -38,20 +34,13 @@ import { MotionWorksProvider } from "@motionworks/react";
 <MotionWorksProvider />
 ```
 
-Connect your coding agent by adding the MCP server to your project's `.mcp.json`:
+Prefer to have your coding agent do it, mounting included? Paste this into Claude Code (or any agent with terminal access):
 
-```json
-{
-  "mcpServers": {
-    "motionworks": {
-      "command": "npx",
-      "args": ["-y", "@motionworks/mcp"]
-    }
-  }
-}
-```
+> Set up MotionWorks in this project: run npx motionworks init --yes, then mount MotionWorksProvider at the app root.
 
-Then run `npx motionworks init` once to teach your agent to register the effects it creates. From there the loop is: ask the agent for a motion effect, click the MotionWorks chip in your app, select the effect, adjust it until it feels right, hit Apply, and the agent writes your refinements into source.
+Setting up by hand instead: `npm install @motionworks/react`, mount the provider as above, add a `motionworks` entry to `.mcp.json` running `npx -y @motionworks/mcp`, and run `npx motionworks init --stanza-only` for the agent instructions.
+
+From there the loop is: ask the agent for a motion effect, click the MotionWorks chip in your app, select the effect, adjust it until it feels right, hit Apply, and the agent writes your refinements into source.
 
 ## How it works
 

@@ -1,5 +1,5 @@
-import { createInterface } from 'node:readline/promises';
-import type { Readable, Writable } from 'node:stream';
+import { createInterface } from "node:readline/promises";
+import type { Readable, Writable } from "node:stream";
 
 import {
   compareVersions,
@@ -9,14 +9,25 @@ import {
   scanClaudeMd,
   writeInstructionFile,
   type InstructionFile,
-} from './claude-md.js';
+} from "./claude-md.js";
 
 export type InitOutcome =
-  | { kind: 'created'; file: InstructionFile; path: string }
-  | { kind: 'appended'; file: InstructionFile; path: string }
-  | { kind: 'skipped-same-version'; file: InstructionFile; path: string; version: string }
-  | { kind: 'replaced'; file: InstructionFile; path: string; from: string; to: string }
-  | { kind: 'cancelled'; file: InstructionFile; path: string; reason: string };
+  | { kind: "created"; file: InstructionFile; path: string }
+  | { kind: "appended"; file: InstructionFile; path: string }
+  | {
+      kind: "skipped-same-version";
+      file: InstructionFile;
+      path: string;
+      version: string;
+    }
+  | {
+      kind: "replaced";
+      file: InstructionFile;
+      path: string;
+      from: string;
+      to: string;
+    }
+  | { kind: "cancelled"; file: InstructionFile; path: string; reason: string };
 
 export interface InitOptions {
   cwd: string;
@@ -31,7 +42,7 @@ export interface InitOptions {
   log?: (msg: string) => void;
 }
 
-async function confirm(
+export async function confirm(
   question: string,
   input: Readable,
   output: Writable,
@@ -39,7 +50,7 @@ async function confirm(
   const rl = createInterface({ input, output, terminal: false });
   try {
     const answer = (await rl.question(`${question} `)).trim().toLowerCase();
-    return answer === 'y' || answer === 'yes';
+    return answer === "y" || answer === "yes";
   } finally {
     rl.close();
   }
@@ -47,8 +58,8 @@ async function confirm(
 
 /** Diff two stanzas as a simple line-by-line change list. */
 export function diffStanzas(oldStanza: string, newStanza: string): string {
-  const oldLines = oldStanza.split('\n');
-  const newLines = newStanza.split('\n');
+  const oldLines = oldStanza.split("\n");
+  const newLines = newStanza.split("\n");
   const lines: string[] = [];
   const max = Math.max(oldLines.length, newLines.length);
   for (let i = 0; i < max; i++) {
@@ -61,7 +72,7 @@ export function diffStanzas(oldStanza: string, newStanza: string): string {
       if (n !== undefined) lines.push(`+ ${n}`);
     }
   }
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 /**
@@ -89,8 +100,8 @@ export async function runInit(options: InitOptions): Promise<InitOutcome[]> {
   } = options;
 
   const flagged: InstructionFile[] = [
-    ...(claude ? (['CLAUDE.md'] as const) : []),
-    ...(agents ? (['AGENTS.md'] as const) : []),
+    ...(claude ? (["CLAUDE.md"] as const) : []),
+    ...(agents ? (["AGENTS.md"] as const) : []),
   ];
   let targets: InstructionFile[];
   if (flagged.length > 0) {
@@ -100,7 +111,7 @@ export async function runInit(options: InitOptions): Promise<InitOutcome[]> {
     for (const file of INSTRUCTION_FILES) {
       if ((await readInstructionFile(cwd, file)) !== null) existing.push(file);
     }
-    targets = existing.length > 0 ? existing : ['CLAUDE.md'];
+    targets = existing.length > 0 ? existing : ["CLAUDE.md"];
   }
 
   const outcomes: InitOutcome[] = [];
@@ -141,12 +152,12 @@ async function initFile({
         output,
       );
       if (!ok) {
-        return { kind: 'cancelled', file, path, reason: 'user declined' };
+        return { kind: "cancelled", file, path, reason: "user declined" };
       }
     }
     await writeInstructionFile(cwd, file, `${newStanza}\n`);
     log(`Wrote MotionWorks instructions stanza to ${path}`);
-    return { kind: 'created', file, path };
+    return { kind: "created", file, path };
   }
 
   const scan = scanClaudeMd(existing);
@@ -159,21 +170,26 @@ async function initFile({
         output,
       );
       if (!ok) {
-        return { kind: 'cancelled', file, path, reason: 'user declined' };
+        return { kind: "cancelled", file, path, reason: "user declined" };
       }
     }
-    const sep = existing.endsWith('\n') ? '' : '\n';
+    const sep = existing.endsWith("\n") ? "" : "\n";
     const nextContents = `${existing}${sep}\n${newStanza}\n`;
     await writeInstructionFile(cwd, file, nextContents);
     log(`Appended MotionWorks instructions stanza to ${path}`);
-    return { kind: 'appended', file, path };
+    return { kind: "appended", file, path };
   }
 
-  const existingVersion = scan.version ?? '0.0.0';
+  const existingVersion = scan.version ?? "0.0.0";
   const cmp = compareVersions(existingVersion, packageVersion);
 
   if (cmp === 0) {
-    return { kind: 'skipped-same-version', file, path, version: packageVersion };
+    return {
+      kind: "skipped-same-version",
+      file,
+      path,
+      version: packageVersion,
+    };
   }
 
   if (cmp > 0) {
@@ -181,7 +197,12 @@ async function initFile({
     log(
       `${file} stanza (v${existingVersion}) is newer than installed @motionworks/mcp@${packageVersion}. Not overwriting.`,
     );
-    return { kind: 'skipped-same-version', file, path, version: existingVersion };
+    return {
+      kind: "skipped-same-version",
+      file,
+      path,
+      version: existingVersion,
+    };
   }
 
   // Older stanza → replace with confirmation.
@@ -193,9 +214,13 @@ async function initFile({
   log(diff);
 
   if (!yes) {
-    const ok = await confirm('Replace the existing stanza? [y/N]', input, output);
+    const ok = await confirm(
+      "Replace the existing stanza? [y/N]",
+      input,
+      output,
+    );
     if (!ok) {
-      return { kind: 'cancelled', file, path, reason: 'user declined' };
+      return { kind: "cancelled", file, path, reason: "user declined" };
     }
   }
 
@@ -203,6 +228,14 @@ async function initFile({
   const after = existing.slice(scan.endIndex!);
   const nextContents = `${before}${newStanza}${after}`;
   await writeInstructionFile(cwd, file, nextContents);
-  log(`Replaced MotionWorks stanza in ${file} (v${existingVersion} → v${packageVersion})`);
-  return { kind: 'replaced', file, path, from: existingVersion, to: packageVersion };
+  log(
+    `Replaced MotionWorks stanza in ${file} (v${existingVersion} → v${packageVersion})`,
+  );
+  return {
+    kind: "replaced",
+    file,
+    path,
+    from: existingVersion,
+    to: packageVersion,
+  };
 }

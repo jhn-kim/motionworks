@@ -1,17 +1,23 @@
 #!/usr/bin/env node
-import { runInit } from './init.js';
-import { start } from './runner.js';
-import { PACKAGE_VERSION } from './version.js';
+import { runSetup } from "./setup.js";
+import { start } from "./runner.js";
+import { PACKAGE_VERSION } from "./version.js";
 
 const HELP = `Usage:
   npx motionworks              Start the MotionWorks WebSocket bridge (port 52340)
                               and the MCP server over stdio.
-  npx motionworks init         Append/update the MotionWorks instructions stanza
-                              in every agent instruction file that exists
-                              (./CLAUDE.md for Claude Code, ./AGENTS.md for
-                              Codex and other AGENTS.md agents). Creates
-                              ./CLAUDE.md when neither exists.
+  npx motionworks init         Set up MotionWorks in the current project:
+                              add the MCP server entry to ./.mcp.json,
+                              install @motionworks/react (React projects),
+                              and append/update the MotionWorks instructions
+                              stanza in every agent instruction file that
+                              exists (./CLAUDE.md for Claude Code, ./AGENTS.md
+                              for Codex and other AGENTS.md agents; creates
+                              ./CLAUDE.md when neither exists). Each step is
+                              confirmed before it runs and skipped when
+                              already done.
     --yes, -y                  Skip confirmation prompts (CI-friendly).
+    --stanza-only              Only write the instructions stanza.
     --claude                   Target ./CLAUDE.md explicitly (create if missing).
     --agents                   Target ./AGENTS.md explicitly (create if missing).
   npx motionworks help         Show this help.
@@ -22,8 +28,8 @@ Env:
 `;
 
 function parsePort(): number | undefined {
-  const raw = process.env['MOTIONWORKS_PORT'];
-  if (raw === undefined || raw === '') return undefined;
+  const raw = process.env["MOTIONWORKS_PORT"];
+  if (raw === undefined || raw === "") return undefined;
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0 || n > 65535) {
     process.stderr.write(
@@ -38,30 +44,38 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const first = args[0];
 
-  if (first === '--version' || first === '-v') {
+  if (first === "--version" || first === "-v") {
     process.stdout.write(`${PACKAGE_VERSION}\n`);
     return;
   }
-  if (first === 'help' || first === '--help' || first === '-h') {
+  if (first === "help" || first === "--help" || first === "-h") {
     process.stdout.write(HELP);
     return;
   }
 
-  if (first === 'init') {
-    const yes = args.includes('--yes') || args.includes('-y');
-    const outcomes = await runInit({
+  if (first === "init") {
+    const yes = args.includes("--yes") || args.includes("-y");
+    const { setupOutcomes, initOutcomes } = await runSetup({
       cwd: process.cwd(),
       packageVersion: PACKAGE_VERSION,
       yes,
-      claude: args.includes('--claude'),
-      agents: args.includes('--agents'),
+      stanzaOnly: args.includes("--stanza-only"),
+      claude: args.includes("--claude"),
+      agents: args.includes("--agents"),
     });
-    if (outcomes.some((o) => o.kind === 'cancelled')) process.exitCode = 1;
+    const failed =
+      initOutcomes.some((o) => o.kind === "cancelled") ||
+      setupOutcomes.some(
+        (o) => o.kind === "cancelled" || o.kind === "react-install-failed",
+      );
+    if (failed) process.exitCode = 1;
     return;
   }
 
   if (first !== undefined) {
-    process.stderr.write(`[motionworks] Unknown command: "${first}"\n\n${HELP}`);
+    process.stderr.write(
+      `[motionworks] Unknown command: "${first}"\n\n${HELP}`,
+    );
     process.exitCode = 2;
     return;
   }
@@ -76,8 +90,8 @@ async function main(): Promise<void> {
       process.exit(0);
     }
   };
-  process.on('SIGINT', () => void shutdown());
-  process.on('SIGTERM', () => void shutdown());
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
 }
 
 main().catch((err: unknown) => {
