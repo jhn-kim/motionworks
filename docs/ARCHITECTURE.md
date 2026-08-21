@@ -61,7 +61,7 @@ The repo is an npm workspace: `packages/core`, `packages/react`, `packages/mcp`,
 Framework-agnostic contract shared by the browser and Node sides. Two entry points:
 
 - **`@motionworks/core`** (browser-safe): the parameter type system and TypeScript interfaces (`types.ts`, see `SCHEMA.md`), registration validation (`validate.ts`), and `MotionWorksStateManager` (`state.ts`) — the registry of effects, live values, selection, the changeset queue, and pending type corrections, with a subscribe/notify API.
-- **`@motionworks/core/server`** (Node-only): `MotionWorksServer`, the WebSocket bridge server (`ws`). It applies upstream overlay messages to a shared state manager, tracks which connection registered which effects (so a page reload drops only that peer's registrations), remembers element selectors from `select`/`commit` messages, and broadcasts downstream notifications.
+- **`@motionworks/core/server`** (Node-only): `MotionWorksServer`, the WebSocket bridge server (`ws`). It applies upstream overlay messages to a shared state manager, tracks which connection registered which effects (so a page reload drops only that peer's registrations), remembers element selectors from `select`/`commit` messages, and broadcasts downstream notifications. The bridge binds to 127.0.0.1 and rejects browser connections whose Origin is not a loopback host; connections without an Origin header (local tools) are accepted.
 
 **Why a shared core package?** The overlay runs in the browser; the MCP server runs in Node. If types and state shape were defined in two places they would diverge. Both `@motionworks/react` and `@motionworks/mcp` depend on core; it is the contract between them.
 
