@@ -3,6 +3,7 @@ import type { Readable, Writable } from "node:stream";
 
 import {
   compareVersions,
+  GUIDE_FILE,
   guideFilePath,
   INSTRUCTION_FILES,
   readGuideFile,
@@ -15,6 +16,14 @@ import {
   type InstructionFile,
 } from "./claude-md.js";
 import { cyan, dim, gray, green, step, symbols, yellow } from "./ui.js";
+
+/**
+ * Cap on how many diff lines `init` prints when replacing an older stanza.
+ * A change larger than this means the file still holds the pre-split guide
+ * inline (a one-time migration to the reference stanza), so we summarize
+ * instead of dumping ~100 removed lines into the terminal.
+ */
+const DIFF_PREVIEW_LINE_CAP = 16;
 
 export type InitOutcome =
   | { kind: "created"; file: InstructionFile; path: string }
@@ -254,14 +263,27 @@ async function initFile({
 
   // Older stanza → replace with confirmation.
   const oldStanza = existing.slice(scan.startIndex!, scan.endIndex!);
-  const diff = colorizeDiff(diffStanzas(oldStanza, newStanza));
+  const rawDiff = diffStanzas(oldStanza, newStanza);
+  const diffLineCount = rawDiff.split("\n").length;
   log(
     step(
       symbols.updated,
-      `${dim(path)} stanza is v${existingVersion}; installed is v${packageVersion}. Proposed change:`,
+      `${dim(path)} MotionWorks stanza ${dim(`v${existingVersion} → v${packageVersion}`)}`,
     ),
   );
-  log(diff);
+  // Show the line diff only when it is small. A large diff means the file
+  // still holds the pre-split guide inline; dumping ~100 removed lines into the
+  // terminal is noise, so summarize instead — the full guide lives in the
+  // standalone guide file now.
+  if (diffLineCount <= DIFF_PREVIEW_LINE_CAP) {
+    log(colorizeDiff(rawDiff));
+  } else {
+    log(
+      dim(
+        `  ${diffLineCount} lines change — the full guide now lives in ${GUIDE_FILE}; only a short reference stays in ${file}.`,
+      ),
+    );
+  }
 
   if (!yes) {
     const ok = await confirm("Replace the existing stanza?", input, output);

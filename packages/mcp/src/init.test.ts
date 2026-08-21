@@ -91,6 +91,33 @@ describe('runInit', () => {
     expect(scan.version).toBe('1.0.0');
   });
 
+  it('summarizes instead of dumping a huge diff when migrating a large inline stanza', async () => {
+    // Simulate a project on the old pre-split stanza: the whole guide inline.
+    const body = Array.from({ length: 60 }, (_, i) => `guide body line ${i}`).join('\n');
+    const oldFat = [
+      '<!-- motionworks-instructions-start -->',
+      '<!-- motionworks-version: 0.5.0 -->',
+      '',
+      body,
+      '<!-- motionworks-instructions-end -->',
+    ].join('\n');
+    await writeFile(join(cwd, 'CLAUDE.md'), `# Project\n\n${oldFat}\n`, 'utf8');
+
+    const logs: string[] = [];
+    const outcomes = await runInit({
+      cwd,
+      packageVersion: '1.0.0',
+      yes: true,
+      log: (m) => logs.push(m),
+    });
+    expect(outcomes[0]!.kind).toBe('replaced');
+
+    const out = logs.join('\n');
+    // The removed guide body is NOT dumped line-by-line; a summary points at the guide file.
+    expect(out).not.toContain('guide body line 30');
+    expect(out).toContain(GUIDE_FILE);
+  });
+
   it('does not overwrite a stanza newer than the installed package', async () => {
     const newerStanza = renderStanza('9.9.9');
     await writeFile(join(cwd, 'CLAUDE.md'), `${newerStanza}\n`, 'utf8');
