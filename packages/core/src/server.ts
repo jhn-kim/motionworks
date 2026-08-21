@@ -1,12 +1,30 @@
-import { WebSocket, WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from "ws";
 
-import { MotionWorksStateManager } from './state.js';
-import type { DownstreamMessage, UpstreamMessage } from './types.js';
+import { MotionWorksStateManager } from "./state.js";
+import type { DownstreamMessage, UpstreamMessage } from "./types.js";
 
-export { MotionWorksStateManager } from './state.js';
-export type { MotionWorksStateSnapshot } from './state.js';
+export { MotionWorksStateManager } from "./state.js";
+export type { MotionWorksStateSnapshot } from "./state.js";
 
 const DEFAULT_PORT = 52340;
+
+// The bridge is a local development channel between the overlay and the MCP
+// server, but its output feeds a coding agent that edits source files — so a
+// rogue peer (a LAN neighbor, or a malicious web page doing a drive-by
+// localhost connection) could inject fake effects and changesets. Two guards:
+// bind loopback only, and reject browser connections from non-local origins.
+// Connections without an Origin header (Node clients, tests) are allowed —
+// non-browser local processes already run with the developer's privileges.
+const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+export function isAllowedOrigin(origin: string | undefined): boolean {
+  if (origin === undefined || origin === "") return true;
+  try {
+    return LOOPBACK_HOSTNAMES.has(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
 
 export class MotionWorksServer {
   private wss: WebSocketServer | null = null;
@@ -32,15 +50,21 @@ export class MotionWorksServer {
 
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const wss = new WebSocketServer({ port: this.port });
+      const wss = new WebSocketServer({
+        port: this.port,
+        host: "127.0.0.1",
+        verifyClient: (info: { origin: string | undefined }) =>
+          isAllowedOrigin(info.origin),
+      });
       this.wss = wss;
-      wss.on('error', reject);
-      wss.on('listening', () => {
+      wss.on("error", reject);
+      wss.on("listening", () => {
         const addr = wss.address();
-        if (addr !== null && typeof addr === 'object') this.boundPort = addr.port;
+        if (addr !== null && typeof addr === "object")
+          this.boundPort = addr.port;
         resolve();
       });
-      wss.on('connection', (ws) => {
+      wss.on("connection", (ws) => {
         this.handleConnection(ws);
       });
     });
@@ -64,7 +88,7 @@ export class MotionWorksServer {
 
   /** Send a source-synced notification to all connected overlay clients. */
   notifySourceSynced(effectId: string): void {
-    this.broadcast({ type: 'source-synced', payload: { effectId } });
+    this.broadcast({ type: "source-synced", payload: { effectId } });
   }
 
   private broadcast(msg: DownstreamMessage): void {
@@ -79,7 +103,7 @@ export class MotionWorksServer {
 
   private handleConnection(ws: WebSocket): void {
     this.effectsByConnection.set(ws, new Set());
-    ws.on('message', (raw) => {
+    ws.on("message", (raw) => {
       let msg: UpstreamMessage;
       try {
         msg = JSON.parse(raw.toString()) as UpstreamMessage;
@@ -88,7 +112,7 @@ export class MotionWorksServer {
       }
       this.handleMessage(ws, msg);
     });
-    ws.on('close', () => this.handleDisconnect(ws));
+    ws.on("close", () => this.handleDisconnect(ws));
   }
 
   private handleDisconnect(ws: WebSocket): void {
@@ -103,14 +127,14 @@ export class MotionWorksServer {
 
   private handleMessage(ws: WebSocket, msg: UpstreamMessage): void {
     switch (msg.type) {
-      case 'register': {
+      case "register": {
         this.state.registerEffectFromWire(msg.payload);
         const owned = this.effectsByConnection.get(ws);
         if (owned !== undefined) owned.add(msg.payload.id);
         break;
       }
 
-      case 'unregister': {
+      case "unregister": {
         this.state.unregisterEffect(msg.payload.effectId);
         const owned = this.effectsByConnection.get(ws);
         if (owned !== undefined) owned.delete(msg.payload.effectId);
@@ -118,14 +142,14 @@ export class MotionWorksServer {
         break;
       }
 
-      case 'select':
+      case "select":
         this.state.selectEffect(msg.payload.effectId);
         if (msg.payload.selector !== undefined) {
           this.selectors.set(msg.payload.effectId, msg.payload.selector);
         }
         break;
 
-      case 'change':
+      case "change":
         this.state.applyParamChange(
           msg.payload.effectId,
           msg.payload.param,
@@ -133,7 +157,7 @@ export class MotionWorksServer {
         );
         break;
 
-      case 'commit': {
+      case "commit": {
         const changeset = this.state.commitEffect(
           msg.payload.effectId,
           msg.payload.elementSelector,
@@ -147,14 +171,14 @@ export class MotionWorksServer {
           this.selectors.set(msg.payload.effectId, msg.payload.elementSelector);
         }
         const ack: DownstreamMessage = {
-          type: 'ack',
+          type: "ack",
           payload: { changeId: changeset.id },
         };
         ws.send(JSON.stringify(ack));
         break;
       }
 
-      case 'type-correction':
+      case "type-correction":
         this.state.addTypeCorrection(msg.payload);
         break;
     }

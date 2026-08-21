@@ -1,6 +1,6 @@
 {
   "name": "@motionworks/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Framework agnostic core for MotionWorks: schema types, validation, state, and the bridge server",
   "license": "MIT",
   "private": false,
