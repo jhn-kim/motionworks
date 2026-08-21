@@ -15,7 +15,7 @@ AI coding agents are good at creating motion from a description. They are slow a
 | Package | What it does |
 |---|---|
 | [`@motionworks/react`](packages/react) | The in-app overlay for React 19: effect registration hook, selection layer, perceptual editing surfaces |
-| [`@motionworks/mcp`](packages/mcp) | MCP server for Claude Code and other MCP clients, plus the WebSocket bridge and `motionworks` CLI |
+| [`motionworks`](packages/mcp) | MCP server for Claude Code and other MCP clients, plus the WebSocket bridge and `motionworks` CLI |
 | [`@motionworks/core`](packages/core) | Framework agnostic contract: schema types, validation, state, bridge server |
 
 ## Quickstart
@@ -38,7 +38,7 @@ Prefer to have your coding agent do it, mounting included? Paste this into Claud
 
 > Set up MotionWorks in this project: run npx motionworks init --yes, then mount MotionWorksProvider at the app root.
 
-Setting up by hand instead: `npm install @motionworks/react`, mount the provider as above, add a `motionworks` entry to `.mcp.json` running `npx -y @motionworks/mcp`, and run `npx motionworks init --stanza-only` for the agent instructions.
+Setting up by hand instead: `npm install @motionworks/react`, mount the provider as above, add a `motionworks` entry to `.mcp.json` running `npx -y motionworks`, and run `npx motionworks init --stanza-only` for the agent instructions.
 
 From there the loop is: ask the agent for a motion effect, click the MotionWorks chip in your app, select the effect, adjust it until it feels right, hit Apply, and the agent writes your refinements into source.
 

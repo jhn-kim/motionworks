@@ -20,7 +20,7 @@ MotionWorks consists of four components that work together during local developm
                     │ motionworks-state.json (fallback)
                     ▼
 ┌─────────────────────────────────────────────┐
-│           @motionworks/mcp                   │
+│           motionworks                       │
 │                                              │
 │  The `motionworks` CLI. Runs the MCP server  │
 │  (stdio) and the WebSocket bridge in one     │
@@ -63,7 +63,7 @@ Framework-agnostic contract shared by the browser and Node sides. Two entry poin
 - **`@motionworks/core`** (browser-safe): the parameter type system and TypeScript interfaces (`types.ts`, see `SCHEMA.md`), registration validation (`validate.ts`), and `MotionWorksStateManager` (`state.ts`) — the registry of effects, live values, selection, the changeset queue, and pending type corrections, with a subscribe/notify API.
 - **`@motionworks/core/server`** (Node-only): `MotionWorksServer`, the WebSocket bridge server (`ws`). It applies upstream overlay messages to a shared state manager, tracks which connection registered which effects (so a page reload drops only that peer's registrations), remembers element selectors from `select`/`commit` messages, and broadcasts downstream notifications. The bridge binds to 127.0.0.1 and rejects browser connections whose Origin is not a loopback host; connections without an Origin header (local tools) are accepted.
 
-**Why a shared core package?** The overlay runs in the browser; the MCP server runs in Node. If types and state shape were defined in two places they would diverge. Both `@motionworks/react` and `@motionworks/mcp` depend on core; it is the contract between them.
+**Why a shared core package?** The overlay runs in the browser; the MCP server runs in Node. If types and state shape were defined in two places they would diverge. Both `@motionworks/react` and `motionworks` depend on core; it is the contract between them.
 
 ### `@motionworks/react`
 
@@ -74,12 +74,12 @@ Browser-only. Contains:
 - The **bridge** (`bridge.ts`) — a module-scoped singleton stored on `globalThis` (survives HMR) that connects app-side hook calls to the overlay. It tracks every live DOM instance per effect id, fans out `update()` calls to all instances, and queues registrations that happen before the overlay attaches.
 - The **overlay** (`overlay/`) — the `OverlaySession` (overlay-side state manager + diff store + type-override store + WS client), the selection engine, the toolkit chip and its panels, the scoped canvas/SVG editing layers, the CSS-animation auto-detector, and the scrubber. See `OVERLAY.md` and `MANIPULATION_SURFACES.md`.
 
-### `@motionworks/mcp`
+### `motionworks`
 
 Node-only. Ships the `motionworks` bin. Contains:
 
 - `motionworks` (no args) — boots the runtime: WebSocket bridge on port 52340 (`MOTIONWORKS_PORT` to override), MCP server over stdio (seven tools, listed below), and the file-based fallback writer, which writes a debounced `motionworks-state.json` to the project root **until an MCP client completes its handshake**, at which point it stops.
-- `motionworks init [--yes]` — appends or updates the sentinel-delimited, versioned instructions stanza in the project's `CLAUDE.md` (see `AGENT_INTEGRATION.md`).
+- `motionworks init [--yes] [--stanza-only]` — full project setup: the `.mcp.json` server entry, the `@motionworks/react` install, and the sentinel-delimited, versioned instructions stanza in the project's `CLAUDE.md` (see `AGENT_INTEGRATION.md`). `--stanza-only` writes only the stanza.
 - A startup **drift check** that compares the stanza's version tag against the installed package version and logs a warning if the stanza is missing or outdated. It never writes files.
 - `instructions.ts` — the schema emission guide, the single source for both the CLAUDE.md stanza and the `motionworks_get_instructions` tool.
 
@@ -120,7 +120,7 @@ The agent reads the queue via `motionworks_get_changes`, updates the source valu
 
 ---
 
-## MCP Tools (exposed by `@motionworks/mcp`)
+## MCP Tools (exposed by `motionworks`)
 
 | Tool | Description |
 |---|---|
@@ -178,6 +178,6 @@ Standard MCP over stdio. Claude Code handles this natively via the project's `.m
 
 MotionWorks runs **only in local development**. It is never deployed to staging or production environments.
 
-Three layers of guard: consumers mount the provider behind a `NODE_ENV === 'development'` check with a dynamic import (see `OVERLAY.md`); the provider itself renders nothing outside development even if mounted; and `useMotionWorks`'s effect body returns immediately in production, so the statically-imported hook is a near-zero-cost no-op. The `@motionworks/mcp` process is a dev-only CLI tool with no production role.
+Three layers of guard: consumers mount the provider behind a `NODE_ENV === 'development'` check with a dynamic import (see `OVERLAY.md`); the provider itself renders nothing outside development even if mounted; and `useMotionWorks`'s effect body returns immediately in production, so the statically-imported hook is a near-zero-cost no-op. The `motionworks` process is a dev-only CLI tool with no production role.
 
 This simplifies security: all WebSocket connections are localhost-only, no authentication is required, and no MotionWorks data leaves the developer's machine.

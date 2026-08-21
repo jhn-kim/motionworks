@@ -195,7 +195,7 @@ async function initFile({
   if (cmp > 0) {
     // Existing stanza is newer than the installed package — leave it alone.
     log(
-      `${file} stanza (v${existingVersion}) is newer than installed @motionworks/mcp@${packageVersion}. Not overwriting.`,
+      `${file} stanza (v${existingVersion}) is newer than installed motionworks@${packageVersion}. Not overwriting.`,
     );
     return {
       kind: "skipped-same-version",

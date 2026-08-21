@@ -17,7 +17,7 @@ Both depend on the agent understanding what MotionWorks expects. This document c
 
 ## Primary Integration: MCP (Claude Code)
 
-Claude Code supports MCP natively. When `@motionworks/mcp` is listed as an MCP server in the project, Claude can query MotionWorks state as part of its context.
+Claude Code supports MCP natively. When `motionworks` is listed as an MCP server in the project, Claude can query MotionWorks state as part of its context.
 
 ### Project configuration
 
@@ -28,7 +28,7 @@ Add MotionWorks to the project's `.mcp.json`:
   "mcpServers": {
     "motionworks": {
       "command": "npx",
-      "args": ["motionworks"]
+      "args": ["-y", "motionworks"]
     }
   }
 }
@@ -75,7 +75,7 @@ Running `npx motionworks init` once during project setup performs full project s
 
 ```
 MotionWorks: agent instructions may be outdated.
-  Installed: @motionworks/mcp@0.2.0  |  CLAUDE.md: v0.1.0  |  AGENTS.md: no stanza
+  Installed: motionworks@0.2.0  |  CLAUDE.md: v0.1.0  |  AGENTS.md: no stanza
   Run "npx motionworks init" to refresh.
 ```
 
@@ -83,7 +83,7 @@ The startup path never writes files; only `init` does, with confirmation.
 
 ### Layer 2: Tool description nudges (always present)
 
-Every MCP tool registered by `@motionworks/mcp` includes a compact instruction in its description: *call `motionworks_get_instructions` before implementing a motion effect.* This is visible to the agent whenever it discovers available tools, regardless of whether the CLAUDE.md stanza is present.
+Every MCP tool registered by `motionworks` includes a compact instruction in its description: *call `motionworks_get_instructions` before implementing a motion effect.* This is visible to the agent whenever it discovers available tools, regardless of whether the CLAUDE.md stanza is present.
 
 ### Layer 3: `motionworks_get_instructions` (explicit fetch)
 
@@ -221,7 +221,7 @@ Type corrections and value changesets are independent. A session may have correc
 
 ## Fallback: File-Based Integration (Non-MCP Agents)
 
-For agents that do not support MCP, `@motionworks/mcp` maintains a file-based fallback: a debounced snapshot written to `motionworks-state.json` in the project root on every state change. The writer runs from server startup and **stops permanently for the session the moment an MCP client completes its handshake** — the file path and the MCP path are never active simultaneously.
+For agents that do not support MCP, `motionworks` maintains a file-based fallback: a debounced snapshot written to `motionworks-state.json` in the project root on every state change. The writer runs from server startup and **stops permanently for the session the moment an MCP client completes its handshake** — the file path and the MCP path are never active simultaneously.
 
 Actual file shape (see `packages/mcp/src/state-file.ts`):
 

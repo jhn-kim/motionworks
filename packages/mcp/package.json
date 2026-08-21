@@ -1,7 +1,7 @@
 {
-  "name": "@motionworks/mcp",
-  "version": "0.3.0",
-  "description": "MCP server and CLI for MotionWorks",
+  "name": "motionworks",
+  "version": "0.3.1",
+  "description": "CLI and MCP server for MotionWorks",
   "license": "MIT",
   "private": false,
   "type": "module",

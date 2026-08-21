@@ -48,4 +48,4 @@ function FollowCard() {
 
 ## Agent integration
 
-Pair with [`@motionworks/mcp`](https://www.npmjs.com/package/@motionworks/mcp) so a coding agent (e.g. Claude Code) receives the designer's refinements and writes them back to source.
+Pair with [`motionworks`](https://www.npmjs.com/package/motionworks) so a coding agent (e.g. Claude Code) receives the designer's refinements and writes them back to source.

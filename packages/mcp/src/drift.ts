@@ -4,7 +4,7 @@ import {
   readInstructionFile,
   scanClaudeMd,
   type InstructionFile,
-} from './claude-md.js';
+} from "./claude-md.js";
 
 export interface DriftCheck {
   cwd: string;
@@ -40,7 +40,7 @@ export async function checkDrift({
       stale.push({ file, stanzaVersion: null });
       continue;
     }
-    const stanzaVersion = scan.version ?? '0.0.0';
+    const stanzaVersion = scan.version ?? "0.0.0";
     if (compareVersions(stanzaVersion, packageVersion) < 0) {
       stale.push({ file, stanzaVersion });
     }
@@ -63,17 +63,17 @@ export function formatDriftWarning(
 ): string {
   const statusLine =
     stale === null
-      ? 'no CLAUDE.md or AGENTS.md found'
+      ? "no CLAUDE.md or AGENTS.md found"
       : stale
           .map((s) =>
             s.stanzaVersion === null
               ? `${s.file}: no stanza`
               : `${s.file}: v${s.stanzaVersion}`,
           )
-          .join('  |  ');
+          .join("  |  ");
   return [
-    'MotionWorks: agent instructions may be outdated.',
-    `  Installed: @motionworks/mcp@${packageVersion}  |  ${statusLine}`,
+    "MotionWorks: agent instructions may be outdated.",
+    `  Installed: motionworks@${packageVersion}  |  ${statusLine}`,
     '  Run "npx motionworks init" to refresh.',
-  ].join('\n');
+  ].join("\n");
 }

@@ -53,10 +53,7 @@ describe("ensureMcpJson", () => {
       mcpServers: { motionworks: { command: string; args: string[] } };
     };
     expect(written.mcpServers.motionworks.command).toBe("npx");
-    expect(written.mcpServers.motionworks.args).toEqual([
-      "-y",
-      "@motionworks/mcp",
-    ]);
+    expect(written.mcpServers.motionworks.args).toEqual(["-y", "motionworks"]);
   });
 
   it("merges into an existing .mcp.json without touching other servers", async () => {

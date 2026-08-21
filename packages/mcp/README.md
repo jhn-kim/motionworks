@@ -1,4 +1,4 @@
-# @motionworks/mcp
+# motionworks
 
 MCP server and CLI for [MotionWorks](https://github.com/jhn-kim/motionworks), a direct manipulation motion design layer for projects built with AI coding agents. It connects a coding agent (Claude Code or any MCP client) to the MotionWorks overlay running in your app, so designer refinements flow back to the agent as precise parameter changes for source writeback.
 
@@ -19,7 +19,7 @@ Or add the server entry to `.mcp.json` yourself:
   "mcpServers": {
     "motionworks": {
       "command": "npx",
-      "args": ["-y", "@motionworks/mcp"]
+      "args": ["-y", "motionworks"]
     }
   }
 }

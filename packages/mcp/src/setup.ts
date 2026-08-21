@@ -22,7 +22,7 @@ export type SetupOutcome =
 
 const MCP_SERVER_ENTRY = {
   command: "npx",
-  args: ["-y", "@motionworks/mcp"],
+  args: ["-y", "motionworks"],
 } as const;
 
 /** Command that installs a runtime dependency, per package manager. */

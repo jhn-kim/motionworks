@@ -23,7 +23,7 @@ Designer clicks "Apply"
        ↓
 MotionWorks packages the uncommitted diff as a Changeset
        ↓
-Changeset is sent to @motionworks/mcp (via WebSocket)
+Changeset is sent to motionworks (via WebSocket)
        ↓
 Agent reads the changeset via motionworks_get_changes
        ↓
