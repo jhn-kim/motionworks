@@ -1,0 +1,91 @@
+import { useEffect, useState } from 'react';
+
+import { COLORS, FONT, HIGHLIGHT } from './theme.js';
+
+interface Props {
+  node: HTMLElement | null;
+  color: string;
+  label?: string;
+}
+
+// Absolutely-positioned bordered div that tracks a node's bounding rect
+// each animation frame. Never blocks pointer events. Optional label renders
+// as a small chip above the outline (or top-inside if the element is near
+// the top of the viewport) — matches the activation reveal badge.
+export function NodeHighlight({ node, color, label }: Props): React.JSX.Element | null {
+  const [rect, setRect] = useState<DOMRect | null>(() =>
+    node !== null ? node.getBoundingClientRect() : null,
+  );
+
+  useEffect(() => {
+    if (node === null) {
+      setRect(null);
+      return;
+    }
+    let cancelled = false;
+    let raf = 0;
+    const tick = (): void => {
+      if (cancelled) return;
+      setRect(node.getBoundingClientRect());
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [node]);
+
+  if (rect === null) return null;
+  const labelFitsAbove = rect.top - HIGHLIGHT.offset > 28;
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        left: rect.left - HIGHLIGHT.offset,
+        top: rect.top - HIGHLIGHT.offset,
+        width: rect.width + HIGHLIGHT.offset * 2,
+        height: rect.height + HIGHLIGHT.offset * 2,
+        pointerEvents: 'none',
+        boxSizing: 'border-box',
+        transition: 'none',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          border: `1.5px solid ${color}`,
+          borderRadius: 4,
+          // Dark rim just outside the light border keeps the (grayscale)
+          // highlight legible on light and dark app backgrounds alike.
+          boxShadow: '0 0 0 1.5px rgba(0, 0, 0, 0.55)',
+          boxSizing: 'border-box',
+        }}
+      />
+      {label !== undefined && label !== '' ? (
+        <span
+          style={{
+            position: 'absolute',
+            left: 0,
+            ...(labelFitsAbove ? { bottom: '100%', marginBottom: 4 } : { top: 4, marginLeft: 4 }),
+            padding: '3px 7px',
+            background: 'rgba(15, 17, 17, 0.96)',
+            // The border ties the chip to the outline stroke; the text stays
+            // full-strength ink so it reads even when the stroke is a faint
+            // hover tint.
+            color: COLORS.neutralInk,
+            border: `1px solid ${color}`,
+            borderRadius: 5,
+            fontSize: FONT.sizeLabel,
+            lineHeight: 1.2,
+            fontFamily: FONT.family,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {label}
+        </span>
+      ) : null}
+    </div>
+  );
+}

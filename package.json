@@ -1,0 +1,23 @@
+{
+  "name": "motionworks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/core -w packages/react -w packages/mcp",
+    "test": "npm run test --if-present --workspaces",
+    "typecheck": "tsc --build",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache --ignore-path .gitignore",
+    "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "prettier-plugin-tailwindcss": "^0.6.11",
+    "typescript": "^5.8.2"
+  },
+  "packageManager": "npm@11.12.1"
+}

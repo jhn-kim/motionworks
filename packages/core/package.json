@@ -1,0 +1,49 @@
+{
+  "name": "@motionworks/core",
+  "version": "0.1.0",
+  "description": "Framework agnostic core for MotionWorks: schema types, validation, state, and the bridge server",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jhn-kim/motionworks.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/jhn-kim/motionworks#readme",
+  "bugs": {
+    "url": "https://github.com/jhn-kim/motionworks/issues"
+  }
+}

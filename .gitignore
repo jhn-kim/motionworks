@@ -1,0 +1,47 @@
+# dependencies
+node_modules
+
+# testing
+coverage
+
+# database
+/prisma/db.sqlite
+/prisma/db.sqlite-journal
+db.sqlite
+
+# next.js
+.next/
+/out/
+next-env.d.ts
+
+# package build output
+dist/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files
+.env
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# idea files
+.idea
+
+# motionworks runtime state (written by the bridge, never committed)
+motionworks-state.json
+
+# local development harness, not published yet (better demo planned)
+examples/
