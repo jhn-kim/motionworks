@@ -36,7 +36,38 @@ if (process.env.NODE_ENV === 'development') {
 
 **Why dynamic import?** Tree-shaking is not always reliable enough to guarantee zero production bundle impact when static imports are involved. Dynamic import + `NODE_ENV` guard is belt-and-suspenders — and the provider itself renders `null` outside development even if someone forgets the guard, lazily loading the overlay renderer chunk only in dev.
 
-**Next.js App Router:** the layout is a server component, so the demo wraps this pattern in a client component (`examples/demo/src/app/_components/motionworks-boot.tsx`) that mounts the provider into its own root from a `useEffect`, guarded against StrictMode double-invocation and HMR re-mounts.
+**Next.js App Router:** `layout.tsx` is a server component, so it cannot import `MotionWorksProvider` and render it directly — the provider uses client-only hooks and will crash the server render. (`@motionworks/react` ships a `"use client"` directive so a stray import degrades to a client boundary instead of a hard 500, but that path does *not* survive HMR — always use the separate root below.) Wrap the mount in a client boot component and render *that* from the layout:
+
+```tsx
+// app/_components/motionworks-boot.tsx
+'use client';
+import { useEffect } from 'react';
+
+// Render <MotionWorksBoot /> once, high in the tree (e.g. app/layout.tsx).
+export function MotionWorksBoot(): null {
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    const w = window as typeof window & { __motionworksRoot?: { unmount(): void } };
+    if (w.__motionworksRoot) return; // survive StrictMode double-invoke + HMR
+    let disposed = false;
+    void Promise.all([import('@motionworks/react'), import('react-dom/client')]).then(
+      ([{ MotionWorksProvider }, { createRoot }]) => {
+        if (disposed || w.__motionworksRoot) return;
+        const el = document.createElement('div');
+        el.id = 'motionworks-root';
+        document.body.appendChild(el);
+        const root = createRoot(el);
+        root.render(<MotionWorksProvider />);
+        w.__motionworksRoot = root;
+      },
+    );
+    return () => {
+      disposed = true;
+    };
+  }, []);
+  return null;
+}
+```
 
 The `MotionWorksProvider` mounts independently of the application's React root. This is intentional: MotionWorks must stay alive across HMR reloads that tear down and recreate the application's component tree.
 

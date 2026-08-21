@@ -101,6 +101,42 @@ This is the content the `CLAUDE.md` stanza and `motionworks_get_instructions` bo
 
 You are working in a project that uses MotionWorks for motion design.
 
+**Mounting the overlay (one-time project setup).** The overlay only appears if `@motionworks/react` is mounted, and it must be mounted in **its own React root from a client component**. Never render `<MotionWorksProvider>` inside a React Server Component (a Next.js App Router `layout.tsx` or `page.tsx`) — the provider uses client-only hooks and will crash the server render. Mount it dev-only via dynamic import so it never ships to production:
+
+```tsx
+'use client';
+import { useEffect } from 'react';
+
+// Render <MotionWorksBoot /> once, high in the tree (e.g. app/layout.tsx).
+// It renders nothing; it mounts the overlay into its own root so the overlay
+// survives HMR reloads that tear down and recreate the app's component tree.
+export function MotionWorksBoot(): null {
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    const w = window as typeof window & { __motionworksRoot?: { unmount(): void } };
+    if (w.__motionworksRoot) return; // survive StrictMode double-invoke + HMR
+    let disposed = false;
+    void Promise.all([import('@motionworks/react'), import('react-dom/client')]).then(
+      ([{ MotionWorksProvider }, { createRoot }]) => {
+        if (disposed || w.__motionworksRoot) return;
+        const el = document.createElement('div');
+        el.id = 'motionworks-root';
+        document.body.appendChild(el);
+        const root = createRoot(el);
+        root.render(<MotionWorksProvider />);
+        w.__motionworksRoot = root;
+      },
+    );
+    return () => {
+      disposed = true;
+    };
+  }, []);
+  return null;
+}
+```
+
+Rendering `<MotionWorksBoot />` from a Server Component is safe because the boot component is itself a Client Component. In a non-Next app (Vite, CRA), run the same dev-only mount directly in your client entry — no wrapper needed.
+
 When you implement a motion effect on a DOM element, you must also emit a MotionWorks registration. This is not optional — without it, the designer cannot visually refine the effect.
 
 A registration has three required parts:
