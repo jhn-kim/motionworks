@@ -4,11 +4,10 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*",
-    "examples/*"
+    "packages/motionworks"
   ],
   "scripts": {
-    "build": "npm run build -w packages/core -w packages/react -w packages/mcp",
+    "build": "npm run build -w packages/motionworks",
     "test": "npm run test --if-present --workspaces",
     "typecheck": "tsc --build --force",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache --ignore-path .gitignore",
