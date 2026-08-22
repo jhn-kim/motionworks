@@ -1,15 +1,15 @@
 export type ParameterType =
-  | 'spatial-radius'
-  | 'spatial-strength'
-  | 'temporal-decay'
-  | 'temporal-response'
-  | 'spring-response'
-  | 'gradient'
-  | 'path'
-  | 'stagger'
-  | 'duration'
-  | 'easing-curve'
-  | 'scalar';
+  | "spatial-radius"
+  | "spatial-strength"
+  | "temporal-decay"
+  | "temporal-response"
+  | "spring-response"
+  | "gradient"
+  | "path"
+  | "stagger"
+  | "duration"
+  | "easing-curve"
+  | "scalar";
 
 // Cubic bezier control points for `easing-curve`, matching CSS
 // cubic-bezier(x1, y1, x2, y2). x values are clamped to [0, 1]; y values may
@@ -97,17 +97,6 @@ export interface ParamDiff {
   to: unknown;
 }
 
-// What the agent receives when the designer commits changes.
-export interface MotionWorksChangeset {
-  id: string;
-  timestamp: number;
-  effectId: string;
-  effectName: string;
-  elementSelector: string;
-  changes: Record<string, { from: unknown; to: unknown }>;
-  sourceHints?: Record<string, SourceHint>;
-}
-
 // A designer-initiated correction to a param's declared type.
 export interface TypeCorrection {
   effectName: string;
@@ -116,23 +105,3 @@ export interface TypeCorrection {
   correctedType: ParameterType;
   correctedAt: number;
 }
-
-// WebSocket messages: overlay → bridge
-export type UpstreamMessage =
-  | { type: 'register'; payload: MotionWorksEffect }
-  | { type: 'unregister'; payload: { effectId: string } }
-  // The `selector` is optional so the overlay can defer describing the DOM
-  // node when it doesn't have one (unusual, but happens right after HMR
-  // remounts).
-  | { type: 'select'; payload: { effectId: string; selector?: string } }
-  | { type: 'change'; payload: { effectId: string; param: string; value: unknown } }
-  | {
-      type: 'commit';
-      payload: { effectId: string; elementSelector: string; diffs: ParamDiff[] };
-    }
-  | { type: 'type-correction'; payload: TypeCorrection };
-
-// WebSocket messages: bridge → overlay
-export type DownstreamMessage =
-  | { type: 'ack'; payload: { changeId: string } }
-  | { type: 'source-synced'; payload: { effectId: string } };

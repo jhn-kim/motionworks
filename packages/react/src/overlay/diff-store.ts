@@ -1,11 +1,11 @@
-import { deepEqual } from '../deep-equal.js';
+import { deepEqual } from "../deep-equal.js";
 
 export interface Diff {
   from: unknown;
   to: unknown;
 }
 
-export type ReconcileStatus = 'clean' | 'preserved' | 'unexpected';
+export type ReconcileStatus = "clean" | "preserved" | "unexpected";
 
 // Per-param outcome of reconciliation against a fresh registration baseline.
 // See SOURCE_SYNC.md: the three-way matrix (baseline == to → clean;
@@ -20,6 +20,13 @@ export interface ReconcileParamResult {
 export interface ReconcileResult {
   effectId: string;
   params: Record<string, ReconcileParamResult>;
+}
+
+// Serialisable form for localStorage persistence (see diff-persistence.ts).
+// Unexpected flags are deliberately not persisted: they are recomputed by
+// the first reconciliation after hydration.
+export interface DiffStoreData {
+  diffs: Record<string, Record<string, Diff>>;
 }
 
 // Stable empty set for the "no flags" branch — a fresh Set per call would
@@ -56,7 +63,12 @@ export class DiffStore {
   // Record a live manipulation. First call for a param captures `from` as the
   // baseline at the moment the designer began manipulating; subsequent calls
   // only update `to` so intent is preserved even after dozens of pointer moves.
-  recordChange(effectId: string, param: string, baseline: unknown, value: unknown): void {
+  recordChange(
+    effectId: string,
+    param: string,
+    baseline: unknown,
+    value: unknown,
+  ): void {
     let paramMap = this.diffs.get(effectId);
     if (paramMap === undefined) {
       paramMap = new Map();
@@ -111,13 +123,56 @@ export class DiffStore {
     return this.unexpectedFlags.get(effectId) ?? EMPTY_STRING_SET;
   }
 
+  toJSON(): DiffStoreData {
+    const diffs: DiffStoreData["diffs"] = {};
+    for (const [effectId, paramMap] of this.diffs.entries()) {
+      if (paramMap.size > 0) diffs[effectId] = Object.fromEntries(paramMap);
+    }
+    return { diffs };
+  }
+
+  // Replace the store's contents with a persisted snapshot. Malformed input
+  // (a hand-edited or stale localStorage value) is ignored rather than
+  // thrown — the worst case is a lost uncommitted tweak.
+  hydrate(data: DiffStoreData | null | undefined): void {
+    if (
+      data === null ||
+      data === undefined ||
+      typeof data.diffs !== "object" ||
+      data.diffs === null
+    )
+      return;
+    const next = new Map<string, Map<string, Diff>>();
+    for (const [effectId, params] of Object.entries(data.diffs)) {
+      if (typeof params !== "object" || params === null) continue;
+      const paramMap = new Map<string, Diff>();
+      for (const [param, diff] of Object.entries(params)) {
+        if (
+          typeof diff !== "object" ||
+          diff === null ||
+          !("from" in diff) ||
+          !("to" in diff)
+        )
+          continue;
+        paramMap.set(param, { from: diff.from, to: diff.to });
+      }
+      if (paramMap.size > 0) next.set(effectId, paramMap);
+    }
+    this.diffs = next;
+    this.unexpectedFlags.clear();
+    this.notify();
+  }
+
   // Applies the SOURCE_SYNC matrix per param and mutates the store to match:
   //   • clean      → param's diff cleared (agent write landed)
   //   • preserved  → param's diff kept intact (write didn't take)
   //   • unexpected → diff kept; a warning flag is recorded so the panel can
   //                   surface it separately (rare — usually a partial write
   //                   or an unrelated edit hitting the same file)
-  reconcile(effectId: string, newBaselines: Record<string, unknown>): ReconcileResult {
+  reconcile(
+    effectId: string,
+    newBaselines: Record<string, unknown>,
+  ): ReconcileResult {
     const paramMap = this.diffs.get(effectId);
     const result: ReconcileResult = { effectId, params: {} };
     if (paramMap === undefined) return result;
@@ -132,10 +187,20 @@ export class DiffStore {
         paramMap.delete(param);
         if (flagsForEffect !== undefined) flagsForEffect.delete(param);
         changed = true;
-        result.params[param] = { status: 'clean', from: diff.from, to: diff.to, newBaseline };
+        result.params[param] = {
+          status: "clean",
+          from: diff.from,
+          to: diff.to,
+          newBaseline,
+        };
       } else if (deepEqual(newBaseline, diff.from)) {
         if (flagsForEffect !== undefined) flagsForEffect.delete(param);
-        result.params[param] = { status: 'preserved', from: diff.from, to: diff.to, newBaseline };
+        result.params[param] = {
+          status: "preserved",
+          from: diff.from,
+          to: diff.to,
+          newBaseline,
+        };
       } else {
         if (flagsForEffect === undefined) {
           flagsForEffect = new Set();
@@ -145,7 +210,12 @@ export class DiffStore {
           flagsForEffect.add(param);
           changed = true;
         }
-        result.params[param] = { status: 'unexpected', from: diff.from, to: diff.to, newBaseline };
+        result.params[param] = {
+          status: "unexpected",
+          from: diff.from,
+          to: diff.to,
+          newBaseline,
+        };
       }
     }
 

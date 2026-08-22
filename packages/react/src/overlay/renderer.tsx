@@ -18,7 +18,7 @@ import { type ArmedTool } from "./cursor-tool.js";
 import { humanizeEffectName } from "./display-name.js";
 import { ElementsPanel, LayersPanel, scopedEffects } from "./global-panels.js";
 import { NodeHighlight } from "./highlight.js";
-import { useSessionState } from "./hooks.js";
+import { useConnection, useSessionState } from "./hooks.js";
 import { ActivationReveal } from "./reveal.js";
 import { curveForType } from "./scale.js";
 import { Scrubber } from "./scrubber.js";
@@ -36,6 +36,7 @@ import { ICONS, Toolbox, type Tool } from "./toolbox.js";
 
 export interface OverlayRendererProps {
   port?: number;
+  daemonUrl?: string;
   debug?: boolean;
 }
 
@@ -43,17 +44,18 @@ const DEFAULT_PORT = 52340;
 
 // Everything below runs in the overlay's own React root (see
 // MotionWorksProvider). It owns the OverlaySession — the state manager,
-// diff store, and WS client — and renders three portal layers on top of
+// diff store, and daemon client — and renders three portal layers on top of
 // the app.
 export function OverlayRenderer({
   port = DEFAULT_PORT,
+  daemonUrl = `http://127.0.0.1:${String(port)}`,
   debug = false,
 }: OverlayRendererProps): React.JSX.Element | null {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const sessionRef = useRef<OverlaySession | null>(null);
 
   if (sessionRef.current === null) {
-    sessionRef.current = new OverlaySession(port, debug);
+    sessionRef.current = new OverlaySession({ daemonUrl, debug });
   }
   const session = sessionRef.current;
 
@@ -98,6 +100,7 @@ function OverlayShell(): React.JSX.Element {
   const [dock, setDock] = useState<"bottom" | "top">("bottom");
   const active = phase === "open";
   const session = useOverlaySession();
+  const connected = useConnection();
   const requestClose = (): void => {
     setPhase((p) => (p === "open" ? "closing" : p));
   };
@@ -147,6 +150,10 @@ function OverlayShell(): React.JSX.Element {
     return startAutoDetect();
   }, [active]);
 
+  useEffect(() => {
+    session.daemon.setActive(active);
+  }, [active, session]);
+
   // Parameter manipulation lives in the toolkit (DynamicToolbox); selection
   // highlight comes from the SelectionEngine. The canvas/SVG layers are not
   // mounted globally — spatial editors that need the element itself as the
@@ -172,6 +179,7 @@ function OverlayShell(): React.JSX.Element {
       ) : (
         <Launcher
           dock={dock}
+          connected={connected}
           onDockChange={setDock}
           onOpen={() => {
             // Every open starts clean — a selection lingering in
@@ -375,6 +383,8 @@ function DynamicToolbox({
 
   const hasDiff =
     selectedEffect !== null && session.diffs.hasDiff(selectedEffect.id);
+  const hasPendingCorrections =
+    selectedEffect !== null && session.hasPendingCorrections(selectedEffect.id);
 
   const sessionState = useSessionState();
   const scoped =
@@ -409,8 +419,9 @@ function DynamicToolbox({
     // so the bar's width is frozen for the whole editing session and the
     // first edit lights them up in place instead of shifting the layout.
     const editing = openFamily !== null || openEditor !== null;
-    const verbsVisible = hasSelection && (hasDiff || editing);
-    const verbsLive = hasSelection && hasDiff;
+    const verbsVisible =
+      hasSelection && (hasDiff || hasPendingCorrections || editing);
+    const verbsLive = hasSelection && (hasDiff || hasPendingCorrections);
     // Replay: a capability-declared replay wins (the effect re-runs itself
     // via the reserved key). Otherwise, effects on clickable elements get a
     // simulated press — selection swallows genuine clicks, so this is the
@@ -561,6 +572,7 @@ function DynamicToolbox({
     openFamily,
     openEditor,
     hasDiff,
+    hasPendingCorrections,
     comparing,
     showLayers,
     effectCount,
@@ -836,10 +848,12 @@ const LAUNCHER_MARGIN = 16;
 function Launcher({
   onOpen,
   dock,
+  connected,
   onDockChange,
 }: {
   onOpen: () => void;
   dock: "bottom" | "top";
+  connected: boolean;
   onDockChange: (dock: "bottom" | "top") => void;
 }): React.JSX.Element {
   const closedX = (): number =>
@@ -948,6 +962,11 @@ function Launcher({
     <button
       type="button"
       aria-label="Open MotionWorks"
+      title={
+        connected
+          ? "Open MotionWorks"
+          : "Start it with `npx motionworks` in your project root"
+      }
       onPointerDown={beginDrag}
       onClick={() => {
         if (suppressClickRef.current) {

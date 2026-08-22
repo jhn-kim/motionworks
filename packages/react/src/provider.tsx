@@ -1,11 +1,14 @@
-import { useEffect, useState, type ComponentType } from 'react';
+import { useEffect, useState, type ComponentType } from "react";
 
-import type { OverlayRendererProps } from './overlay/renderer.js';
+import type { OverlayRendererProps } from "./overlay/renderer.js";
 
-const IS_DEV = process.env.NODE_ENV === 'development';
+const IS_DEV = process.env.NODE_ENV === "development";
 
 export interface MotionWorksProviderProps {
   port?: number;
+  // Where the `npx motionworks` daemon listens; defaults to
+  // `http://127.0.0.1:<port>`.
+  daemonUrl?: string;
   debug?: boolean;
 }
 
@@ -14,19 +17,22 @@ export interface MotionWorksProviderProps {
 // site itself with a NODE_ENV check + dynamic import (see OVERLAY.md) so
 // the provider module itself is dead code in production bundles — but if
 // someone forgets, the render path here still short-circuits.
-export function MotionWorksProvider(props: MotionWorksProviderProps): React.JSX.Element | null {
-  const [Renderer, setRenderer] = useState<ComponentType<OverlayRendererProps> | null>(null);
+export function MotionWorksProvider(
+  props: MotionWorksProviderProps,
+): React.JSX.Element | null {
+  const [Renderer, setRenderer] =
+    useState<ComponentType<OverlayRendererProps> | null>(null);
 
   useEffect(() => {
     if (!IS_DEV) return;
     let cancelled = false;
-    void import('./overlay/renderer.js')
+    void import("./overlay/renderer.js")
       .then((mod) => {
         if (cancelled) return;
         setRenderer(() => mod.OverlayRenderer);
       })
       .catch((err: unknown) => {
-        console.error('[MotionWorks] overlay renderer failed to load:', err);
+        console.error("[MotionWorks] overlay renderer failed to load:", err);
       });
     return () => {
       cancelled = true;

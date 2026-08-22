@@ -1,12 +1,5 @@
-import { validateRegistration } from './validate.js';
-import type {
-  MotionWorksChangeset,
-  MotionWorksEffect,
-  MotionWorksRegistration,
-  ParamDiff,
-  SourceHint,
-  TypeCorrection,
-} from './types.js';
+import { validateRegistration } from "./validate.js";
+import type { MotionWorksEffect, MotionWorksRegistration } from "./types.js";
 
 interface StoredEffect {
   effect: MotionWorksEffect;
@@ -18,21 +11,11 @@ interface StoredEffect {
 export interface MotionWorksStateSnapshot {
   effects: MotionWorksEffect[];
   selectedEffectId: string | null;
-  changesets: MotionWorksChangeset[];
-  typeCorrections: TypeCorrection[];
-}
-
-// Works in browsers and Node 19+. Node-only crypto imports would break
-// the shared browser entry when this module is loaded from @motionworks/react.
-function randomUUID(): string {
-  return globalThis.crypto.randomUUID();
 }
 
 export class MotionWorksStateManager {
   private readonly effects = new Map<string, StoredEffect>();
   private selectedEffectId: string | null = null;
-  private changesets: MotionWorksChangeset[] = [];
-  private typeCorrections: TypeCorrection[] = [];
   private readonly listeners = new Set<() => void>();
 
   // ── Subscription ─────────────────────────────────────────────────────────
@@ -53,7 +36,10 @@ export class MotionWorksStateManager {
   // ── Registration ─────────────────────────────────────────────────────────
 
   /** Register an effect from a local MotionWorksRegistration (includes update fn). */
-  registerEffect(id: string, registration: MotionWorksRegistration): MotionWorksEffect {
+  registerEffect(
+    id: string,
+    registration: MotionWorksRegistration,
+  ): MotionWorksEffect {
     const result = validateRegistration(registration);
 
     const effect: MotionWorksEffect = {
@@ -61,8 +47,12 @@ export class MotionWorksStateManager {
       name: registration.name,
       params: result.params,
       readOnly: result.readOnly,
-      ...(registration.sourceHints !== undefined && { sourceHints: registration.sourceHints }),
-      ...(registration.capabilities !== undefined && { capabilities: registration.capabilities }),
+      ...(registration.sourceHints !== undefined && {
+        sourceHints: registration.sourceHints,
+      }),
+      ...(registration.capabilities !== undefined && {
+        capabilities: registration.capabilities,
+      }),
     };
 
     const liveValues: Record<string, unknown> = {};
@@ -80,7 +70,7 @@ export class MotionWorksStateManager {
     return effect;
   }
 
-  /** Register an effect received over the WebSocket (no update fn). */
+  /** Register an effect from its serialisable form (no update fn). */
   registerEffectFromWire(effect: MotionWorksEffect): void {
     const liveValues: Record<string, unknown> = {};
     for (const [key, param] of Object.entries(effect.params)) {
@@ -137,68 +127,6 @@ export class MotionWorksStateManager {
     return diff;
   }
 
-  // ── Commit queue ──────────────────────────────────────────────────────────
-
-  commitEffect(
-    effectId: string,
-    elementSelector: string,
-    diffs: ParamDiff[],
-  ): MotionWorksChangeset | null {
-    const stored = this.effects.get(effectId);
-    if (!stored || diffs.length === 0) return null;
-
-    const changes: Record<string, { from: unknown; to: unknown }> = {};
-    for (const diff of diffs) {
-      changes[diff.param] = { from: diff.from, to: diff.to };
-    }
-
-    // Include only the source hints relevant to the changed params.
-    let filteredHints: Record<string, SourceHint> | undefined;
-    if (stored.effect.sourceHints !== undefined) {
-      const hints: Record<string, SourceHint> = {};
-      for (const diff of diffs) {
-        const hint = stored.effect.sourceHints[diff.param];
-        if (hint !== undefined) hints[diff.param] = hint;
-      }
-      if (Object.keys(hints).length > 0) filteredHints = hints;
-    }
-
-    const changeset: MotionWorksChangeset = {
-      id: randomUUID(),
-      timestamp: Date.now(),
-      effectId,
-      effectName: stored.effect.name,
-      elementSelector,
-      changes,
-      ...(filteredHints !== undefined && { sourceHints: filteredHints }),
-    };
-
-    this.changesets.push(changeset);
-    this.notify();
-    return changeset;
-  }
-
-  /** Remove a single changeset from the queue by id; preserves order of the rest. */
-  clearChangeset(id: string): boolean {
-    const idx = this.changesets.findIndex((c) => c.id === id);
-    if (idx === -1) return false;
-    this.changesets.splice(idx, 1);
-    this.notify();
-    return true;
-  }
-
-  // ── Type corrections ──────────────────────────────────────────────────────
-
-  addTypeCorrection(correction: TypeCorrection): void {
-    this.typeCorrections.push(correction);
-    this.notify();
-  }
-
-  clearTypeCorrections(): void {
-    this.typeCorrections = [];
-    this.notify();
-  }
-
   // ── Reads ─────────────────────────────────────────────────────────────────
 
   getEffect(id: string): MotionWorksEffect | undefined {
@@ -218,8 +146,6 @@ export class MotionWorksStateManager {
     return {
       effects: this.getAllEffects(),
       selectedEffectId: this.selectedEffectId,
-      changesets: [...this.changesets],
-      typeCorrections: [...this.typeCorrections],
     };
   }
 }

@@ -1,9 +1,7 @@
 export type {
-  DownstreamMessage,
   EasingCurveValue,
   GradientStop,
   MotionWorksCapabilities,
-  MotionWorksChangeset,
   MotionWorksEffect,
   MotionWorksParam,
   MotionWorksRegistration,
@@ -13,8 +11,7 @@ export type {
   SourceHint,
   SpringValue,
   TypeCorrection,
-  UpstreamMessage,
-} from './types.js';
+} from "./types.js";
 export type {
   CommitRequest,
   JournalChange,
@@ -22,10 +19,10 @@ export type {
   JournalStatus,
   SelectRequest,
   StatusResponse,
-} from './journal-types.js';
+} from "./journal-types.js";
 
-export { validateRegistration } from './validate.js';
-export type { ValidationResult } from './validate.js';
+export { validateRegistration } from "./validate.js";
+export type { ValidationResult } from "./validate.js";
 
-export { MotionWorksStateManager } from './state.js';
-export type { MotionWorksStateSnapshot } from './state.js';
+export { MotionWorksStateManager } from "./state.js";
+export type { MotionWorksStateSnapshot } from "./state.js";
