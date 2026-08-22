@@ -234,7 +234,7 @@ const rangeInputStyle: React.CSSProperties = {
 // control for every numeric parameter type. Clicking the chip arms the
 // cursor tool (the 0–10 dial adjusted by scrolling over the element);
 // clicking again disarms. Exported for the cross-effect choreography panel.
-export function SliderControl({
+function SliderControl({
   label,
   effectId,
   paramKey,
@@ -564,7 +564,7 @@ function isEasingValue(v: unknown): v is EasingValue {
   );
 }
 
-export const EASING_PRESETS: { name: string; value: EasingValue }[] = [
+const EASING_PRESETS: { name: string; value: EasingValue }[] = [
   { name: 'linear', value: { x1: 0, y1: 0, x2: 1, y2: 1 } },
   { name: 'ease', value: { x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 } },
   { name: 'in', value: { x1: 0.42, y1: 0, x2: 1, y2: 1 } },

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpringValue } from '@motionworks/core';
 
 import { useOverlaySession } from '../context.js';
-import { COLORS, FONT, HANDLES, PANEL, SPRING_SURFACE, STROKE } from '../theme.js';
+import { COLORS, FONT, HANDLES, SPRING_SURFACE, STROKE } from '../theme.js';
 import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
 import { useCanvasDrawer, useNodeRect } from './shared/hooks.js';
 import type { SurfaceProps } from './shared/props.js';

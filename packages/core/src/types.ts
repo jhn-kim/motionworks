@@ -91,12 +91,6 @@ export interface MotionWorksEffect {
 }
 
 // A single parameter change within a commit.
-export interface ParamDiff {
-  param: string;
-  from: unknown;
-  to: unknown;
-}
-
 // A designer-initiated correction to a param's declared type.
 export interface TypeCorrection {
   effectName: string;

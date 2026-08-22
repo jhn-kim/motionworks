@@ -5,7 +5,7 @@ import { GLASS } from "./theme.js";
 // 'action' — persistent left section (close, layers). 'type' — the four
 // family buttons in the middle. 'verb' — in-time actions on the right
 // (apply, discard, play, compare).
-export type ToolKind = "action" | "type" | "verb";
+type ToolKind = "action" | "type" | "verb";
 
 export interface Tool {
   id: string;

@@ -15,11 +15,11 @@ const sgr =
   (s: string): string =>
     colorEnabled ? `\x1b[${open}m${s}\x1b[${close}m` : s;
 
-export const bold = sgr(1, 22);
+const bold = sgr(1, 22);
 export const dim = sgr(2, 22);
 export const cyan = sgr(36, 39);
 /** Deep red (256-color) — the MotionWorks brand accent. */
-export const red = sgr("38;5;124", 39);
+const red = sgr("38;5;124", 39);
 export const green = sgr(32, 39);
 export const yellow = sgr(33, 39);
 export const gray = sgr(90, 39);

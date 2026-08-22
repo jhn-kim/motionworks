@@ -6,7 +6,6 @@ export type {
   MotionWorksParam,
   MotionWorksRegistration,
   ParameterType,
-  ParamDiff,
   PathPoint,
   SourceHint,
   SpringValue,

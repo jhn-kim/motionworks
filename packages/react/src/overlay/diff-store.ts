@@ -5,12 +5,12 @@ export interface Diff {
   to: unknown;
 }
 
-export type ReconcileStatus = "clean" | "preserved" | "unexpected";
+type ReconcileStatus = "clean" | "preserved" | "unexpected";
 
 // Per-param outcome of reconciliation against a fresh registration baseline.
 // See SOURCE_SYNC.md: the three-way matrix (baseline == to → clean;
 // baseline == from → preserved + warn; anything else → unexpected).
-export interface ReconcileParamResult {
+interface ReconcileParamResult {
   status: ReconcileStatus;
   from: unknown;
   to: unknown;
@@ -33,9 +33,8 @@ export interface DiffStoreData {
 // break useSyncExternalStore's snapshot equality.
 const EMPTY_STRING_SET: ReadonlySet<string> = new Set<string>();
 
-// Tracks uncommitted manipulations separately from the core state manager.
-// The state manager wipes its liveValues on every re-registration, but the
-// designer's intent (from → to) must survive HMR so we own that here.
+// Tracks uncommitted manipulations separately from the core state manager so
+// the designer's intent (from → to) survives HMR and page reloads.
 export class DiffStore {
   private diffs = new Map<string, Map<string, Diff>>();
   private unexpectedFlags = new Map<string, Set<string>>();

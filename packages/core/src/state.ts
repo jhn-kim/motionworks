@@ -4,8 +4,6 @@ import type { MotionWorksEffect, MotionWorksRegistration } from "./types.js";
 interface StoredEffect {
   effect: MotionWorksEffect;
   update?: (params: Record<string, unknown>) => void;
-  // Current (possibly manipulated) values for each param.
-  liveValues: Record<string, unknown>;
 }
 
 export interface MotionWorksStateSnapshot {
@@ -55,15 +53,9 @@ export class MotionWorksStateManager {
       }),
     };
 
-    const liveValues: Record<string, unknown> = {};
-    for (const [key, param] of Object.entries(result.params)) {
-      liveValues[key] = param.value;
-    }
-
     this.effects.set(id, {
       effect,
       update: result.readOnly ? undefined : registration.update,
-      liveValues,
     });
 
     this.notify();
@@ -72,11 +64,7 @@ export class MotionWorksStateManager {
 
   /** Register an effect from its serialisable form (no update fn). */
   registerEffectFromWire(effect: MotionWorksEffect): void {
-    const liveValues: Record<string, unknown> = {};
-    for (const [key, param] of Object.entries(effect.params)) {
-      liveValues[key] = param.value;
-    }
-    this.effects.set(effect.id, { effect, liveValues });
+    this.effects.set(effect.id, { effect });
     this.notify();
   }
 
@@ -100,32 +88,10 @@ export class MotionWorksStateManager {
   applyParamChange(effectId: string, param: string, value: unknown): void {
     const stored = this.effects.get(effectId);
     if (!stored) return;
-    stored.liveValues[param] = value;
     stored.update?.({ [param]: value });
     this.notify();
   }
 
-  // ── Diff computation ──────────────────────────────────────────────────────
-
-  /**
-   * Computes which params have been manipulated since registration.
-   * Returns null if the effect doesn't exist; returns {} if nothing changed.
-   */
-  computeUncommittedDiff(
-    effectId: string,
-  ): Record<string, { from: unknown; to: unknown }> | null {
-    const stored = this.effects.get(effectId);
-    if (!stored) return null;
-
-    const diff: Record<string, { from: unknown; to: unknown }> = {};
-    for (const [key, param] of Object.entries(stored.effect.params)) {
-      const live = stored.liveValues[key];
-      if (live !== param.value) {
-        diff[key] = { from: param.value, to: live };
-      }
-    }
-    return diff;
-  }
 
   // ── Reads ─────────────────────────────────────────────────────────────────
 

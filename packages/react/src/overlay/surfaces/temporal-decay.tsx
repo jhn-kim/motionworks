@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useOverlaySession } from '../context.js';
-import { COLORS, DECAY_SURFACE, FONT, HANDLES, PANEL, STROKE } from '../theme.js';
+import { COLORS, DECAY_SURFACE, FONT, HANDLES, PANEL } from '../theme.js';
 import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
 import { useCanvasDrawer, useNodeRect } from './shared/hooks.js';
 import type { SurfaceProps } from './shared/props.js';

@@ -23,7 +23,7 @@ const KEYWORD_CURVES: Record<string, EasingCurveValue> = {
   'ease-in-out': { x1: 0.42, y1: 0, x2: 0.58, y2: 1 },
 };
 
-export function parseEasing(easing: string): EasingCurveValue | null {
+function parseEasing(easing: string): EasingCurveValue | null {
   const keyword = KEYWORD_CURVES[easing.trim()];
   if (keyword !== undefined) return keyword;
   const match = /^cubic-bezier\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)$/.exec(
@@ -71,7 +71,7 @@ export function nameFromKeyframes(frames: Keyframe[]): string {
 // Display name for an auto-detected animation. The original @keyframes name
 // is preserved in the effect id (css::<name>#<n>) for writeback — this only
 // decides what the designer reads.
-export function displayNameFor(animationName: string, effect: KeyframeEffect): string {
+function displayNameFor(animationName: string, effect: KeyframeEffect): string {
   if (isReadableName(animationName)) {
     const spaced = animationName.replace(/-+/g, ' ').toLowerCase();
     return spaced.charAt(0).toUpperCase() + spaced.slice(1);

@@ -16,7 +16,7 @@ interface Hsv {
   v: number; // 0–1
 }
 
-export function hsvToHex({ h, s, v }: Hsv): string {
+function hsvToHex({ h, s, v }: Hsv): string {
   const f = (n: number): number => {
     const k = (n + h / 60) % 6;
     return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
@@ -28,7 +28,7 @@ export function hsvToHex({ h, s, v }: Hsv): string {
   return `#${toHex(f(5))}${toHex(f(3))}${toHex(f(1))}`;
 }
 
-export function rgbToHsv(r: number, g: number, b: number): Hsv {
+function rgbToHsv(r: number, g: number, b: number): Hsv {
   const rn = r / 255;
   const gn = g / 255;
   const bn = b / 255;
@@ -47,7 +47,7 @@ export function rgbToHsv(r: number, g: number, b: number): Hsv {
 
 // Best-effort conversion of any CSS colour to #rrggbb. Non-hex syntax is
 // resolved through a scratch canvas so named colours and rgb() both work.
-export function cssToHex(color: string): string {
+function cssToHex(color: string): string {
   const s = color.trim();
   if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase();
   if (/^#[0-9a-fA-F]{3}$/.test(s)) {

@@ -115,7 +115,3 @@ function HeroImage() {
 Always extract parameter values into named constants (like \`DISTORTION_STRENGTH\`) so they are easy to locate for source writeback. Inline literals are harder for source-change tooling to find reliably.
 
 **[End of schema emission guide]**`;
-
-/** Tool description suffix appended to every MCP tool description. */
-export const TOOL_NUDGE =
-  'Before implementing a motion effect, call `motionworks_get_instructions` to get the current type vocabulary.';

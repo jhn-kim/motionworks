@@ -14,7 +14,6 @@ const HELP = `Usage:
   npx motionworks changes [--json|--brief]                    Show pending changes.
   npx motionworks ack <id>|--all                              Acknowledge changes.
   npx motionworks status                                      Show daemon and selection.
-  npx motionworks serve <dir>                                 Reserved for Slice 4.
   npx motionworks init [--yes] [--stanza-only]                Set up MotionWorks.
   npx motionworks help | --version
 `;

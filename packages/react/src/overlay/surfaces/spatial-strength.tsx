@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { useOverlaySession } from '../context.js';
-import { COLORS, HANDLES, STRENGTH_SURFACE, STROKE } from '../theme.js';
+import { COLORS, STRENGTH_SURFACE, STROKE } from '../theme.js';
 import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
 import { useNodeRect } from './shared/hooks.js';
 import type { SurfaceProps } from './shared/props.js';

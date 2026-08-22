@@ -164,15 +164,6 @@ describe("MotionWorksStateManager", () => {
   });
 
   describe("applyParamChange", () => {
-    it("updates liveValues for the param", () => {
-      const state = new MotionWorksStateManager();
-      state.registerEffect("id-e", makeRegistration());
-      state.applyParamChange("id-e", "radius", 200);
-
-      const diff = state.computeUncommittedDiff("id-e");
-      expect(diff?.["radius"]?.to).toBe(200);
-    });
-
     it("calls the update fn with only the changed param (partial delta)", () => {
       const updateFn = vi.fn();
       const state = new MotionWorksStateManager();
@@ -199,42 +190,6 @@ describe("MotionWorksStateManager", () => {
       state.subscribe(listener);
       state.applyParamChange("nonexistent", "x", 1);
       expect(listener).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("computeUncommittedDiff", () => {
-    it("returns null for an unknown effect", () => {
-      const state = new MotionWorksStateManager();
-      expect(state.computeUncommittedDiff("nonexistent")).toBeNull();
-    });
-
-    it("returns an empty object when no params have changed", () => {
-      const state = new MotionWorksStateManager();
-      state.registerEffect("id-h", makeRegistration());
-      expect(state.computeUncommittedDiff("id-h")).toEqual({});
-    });
-
-    it("includes only changed params in the diff", () => {
-      const state = new MotionWorksStateManager();
-      state.registerEffect("id-i", makeRegistration());
-      state.applyParamChange("id-i", "radius", 200);
-
-      const diff = state.computeUncommittedDiff("id-i");
-      expect(diff).toEqual({
-        radius: { from: 100, to: 200 },
-      });
-      expect(diff?.["strength"]).toBeUndefined();
-    });
-
-    it("tracks multiple changed params", () => {
-      const state = new MotionWorksStateManager();
-      state.registerEffect("id-j", makeRegistration());
-      state.applyParamChange("id-j", "radius", 300);
-      state.applyParamChange("id-j", "strength", 0.9);
-
-      const diff = state.computeUncommittedDiff("id-j");
-      expect(diff?.["radius"]).toEqual({ from: 100, to: 300 });
-      expect(diff?.["strength"]).toEqual({ from: 0.5, to: 0.9 });
     });
   });
 

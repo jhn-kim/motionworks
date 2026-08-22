@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { getBridge } from '../../bridge.js';
 import { useOverlaySession } from '../context.js';
-import { COLORS, FONT, HANDLES, PANEL, STAGGER_SURFACE, STROKE } from '../theme.js';
+import { COLORS, FONT, PANEL, STAGGER_SURFACE, STROKE } from '../theme.js';
 import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
 import { useNodeRect } from './shared/hooks.js';
 import type { SurfaceProps } from './shared/props.js';

@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react';
 
-import type { MotionWorksEffect, ParameterType } from '@motionworks/core';
+import type { MotionWorksEffect } from '@motionworks/core';
 
 import { getBridge } from '../bridge.js';
 import { useOverlaySession } from './context.js';
 import { humanizeEffectName } from './display-name.js';
 import { useSessionState } from './hooks.js';
-import { SliderControl, sliderBoundsFor } from './toolkit-panels.js';
 import { FONT, GLASS } from './theme.js';
 
 // Width 0 + minWidth 100%: the list never contributes to the chip's
@@ -327,80 +326,6 @@ export function ElementsPanel({
           })}
           </MagnifyList>
         </>
-      )}
-    </div>
-  );
-}
-
-// ── Choreography ──────────────────────────────────────────────────────────
-// Timing only: every timing parameter (stagger / per-phase durations) of
-// every animation in the selection, editable in one place. Animations
-// without timing parameters do not appear here — that's what Layers is for.
-
-export function ChoreographyPanel({
-  selectedEffectId,
-}: {
-  selectedEffectId: string;
-}): React.JSX.Element {
-  const session = useOverlaySession();
-  const state = useSessionState();
-  const entries = scopedEffects(state.effects, selectedEffectId, (id, key) =>
-    session.resolvedType(id, key),
-  ).filter((e) => e.timingParams.length > 0);
-
-  return (
-    <div style={sectionStyle}>
-      <span style={headerStyle}>Choreography</span>
-      {entries.length === 0 ? (
-        <span style={hintStyle}>No timing parameters in this selection.</span>
-      ) : (
-        entries.map(({ effect, scopeNodes, timingParams }) => {
-          // Rows lead with the fixed tool name; the agent's label only
-          // steps in when this animation has several params of one type.
-          const typeCounts = new Map<ParameterType, number>();
-          for (const key of timingParams) {
-            const p = effect.params[key];
-            if (p === undefined) continue;
-            const t = session.resolvedType(effect.id, key) ?? p.type;
-            typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1);
-          }
-          return (
-          <div key={effect.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span
-              style={{
-                fontSize: FONT.sizeLabel,
-                color: 'rgba(255, 255, 255, 0.6)',
-                fontFamily: FONT.family,
-              }}
-            >
-              {humanizeEffectName(effect.name)}
-              {scopeNodes.length > 1 ? ` × ${String(scopeNodes.length)}` : ''}
-            </span>
-            {timingParams.map((paramKey) => {
-              const param = effect.params[paramKey];
-              if (param === undefined) return null;
-              const diff = session.diffs.getDiff(effect.id)[paramKey];
-              const live = diff !== undefined ? diff.to : param.value;
-              if (typeof live !== 'number') return null;
-              const type = session.resolvedType(effect.id, paramKey) ?? param.type;
-              const toolName = type === 'stagger' ? 'Stagger' : 'Duration';
-              return (
-                <SliderControl
-                  key={`${effect.id}::${paramKey}`}
-                  label={(typeCounts.get(type) ?? 0) === 1 ? toolName : (param.label ?? paramKey)}
-                  effectId={effect.id}
-                  paramKey={paramKey}
-                  currentType={type}
-                  value={live}
-                  bounds={sliderBoundsFor(param, type)}
-                  unit={param.unit}
-                  onChange={(next) => session.manipulate(effect.id, paramKey, next)}
-                />
-              );
-            })}
-          </div>
-          );
-        })
       )}
     </div>
   );

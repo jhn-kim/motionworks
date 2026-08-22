@@ -235,10 +235,6 @@ export const RESERVED_KEYS = {
 // reserved key would just be frozen at value=0). See ARCHITECTURE.md note in
 // the phase-5 handoff — this is an addition to the existing schema and is
 // documented here in code.
-export const CAPABILITIES = {
-  scrub: "motionworks:supports-scrub",
-};
-
 // Numeric editor styling (right-click "Enter exact value…").
 export const NUMERIC_EDITOR = {
   width: 100,

@@ -10,7 +10,7 @@
   "scripts": {
     "build": "npm run build -w packages/core -w packages/react -w packages/mcp",
     "test": "npm run test --if-present --workspaces",
-    "typecheck": "tsc --build",
+    "typecheck": "tsc --build --force",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,mdx}\" --cache --ignore-path .gitignore",
     "format:write": "prettier --write \"**/*.{ts,tsx,js,jsx,mdx}\" --cache --ignore-path .gitignore"
   },
