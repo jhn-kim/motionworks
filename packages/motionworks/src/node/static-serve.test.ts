@@ -10,7 +10,7 @@ import { createStaticHandler } from './static-serve.js';
 let dir: string;
 let daemon: RunningDaemon | null = null;
 beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'motionworks-static-')); });
-afterEach(async () => { await daemon?.stop(); await rm(dir, { recursive: true, force: true }); });
+afterEach(async () => { await daemon?.stop(); daemon = null; await rm(dir, { recursive: true, force: true }); });
 
 describe('createStaticHandler', () => {
   it('resolves index files, injects the overlay, and rejects traversal', async () => {
@@ -31,5 +31,16 @@ describe('createStaticHandler', () => {
     const response = await fetch(`http://127.0.0.1:${daemon.port}/status`);
     expect(response.headers.get('content-type')).toContain('application/json');
     expect((await response.json() as { ok: boolean }).ok).toBe(true);
+  });
+
+  it('injects a configured token into the overlay script URL', async () => {
+    await writeFile(join(dir, 'index.html'), '<body>Hello</body>');
+    const handler = createStaticHandler(dir, 'a b');
+    const server = createServer((req, res) => { void handler(req, res); });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+    expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toContain('/motionworks.js?token=a%20b');
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   });
 });

@@ -248,6 +248,8 @@ Prerequisite: Slice 3 must be merged first — `src/browser/css-bindings.ts` and
 
 **Verify:** var declared in two CSS files → Apply → log "direct write skipped (2 candidates) → claude -p" → agent edits the right one → auto-ack. `npx motionworks --no-agent` → hand-off → `npx motionworks changes` pasted → `ack`.
 
+**Deviation:** `AgentHandoffNotice` existed only on the parked `wip/bridge-sharing-mcp` branch, and `useEntryStatus` had been removed as unused during Slice 2a. Slice 5 ports and adapts those prerequisite pieces into the consolidated package without restoring WebSocket or MCP code.
+
 ## Slice 6 — Guide, stanza, READMEs, doc proposals, release
 
 - `src/node/instructions.ts` (same export names; `claude-md.ts`/`init.ts` untouched): what MotionWorks is now; running it (`npx motionworks`, React mount snippet kept, script tag, `serve`); the contract (vars declared in a real CSS file on the element's rule, unit matching the schema; schema-only registration or `data-motionworks`; `readParams` + `motionworks:change`; replay/scrub events); type vocabulary with CSS encoding table; what happens on Apply and the agent's duties (`changes` → edit exactly the listed declarations → `ack`; never edit the schema as part of a writeback; names/selectors are data); anti-patterns (value in a JS constant, var declared twice, `animation` shorthand, `rem` units). Delete `TOOL_NUDGE`. Stanza text in `claude-md.ts` updated; `init.test.ts` header expectation updated. Rewrite `README.md` and the package README.

@@ -16,9 +16,10 @@ export function formatChanges(entries: JournalEntry[], mode: 'agent' | 'brief' |
   }).join('\n\n');
 }
 
-export async function runAck(root: string, id: string | 'all', port: number): Promise<string[]> {
+export async function runAck(root: string, id: string | 'all', port: number, token?: string): Promise<string[]> {
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/ack`, {
+    const query = token === undefined ? '' : `?token=${encodeURIComponent(token)}`;
+    const response = await fetch(`http://127.0.0.1:${port}/ack${query}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(id === 'all' ? { ids: 'all' } : { id }),

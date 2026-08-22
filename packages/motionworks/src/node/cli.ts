@@ -6,6 +6,7 @@ import { checkDrift } from './drift.js';
 import { formatChanges, formatStatus, pendingChanges, runAck, runRevert } from './commands.js';
 import { loadConfig, parsePort, type AgentSetting } from './config.js';
 import { startDaemon } from './daemon.js';
+import { detectAgent } from './agent.js';
 import { PACKAGE_VERSION } from './version.js';
 import { banner, dim } from './ui.js';
 
@@ -41,12 +42,13 @@ async function main(): Promise<void> {
   const portFlag = flagValue(args, '--port');
   if (portFlag !== undefined && parsePort(portFlag) === undefined) throw new Error(`Invalid port: ${portFlag}`);
   const agentFlag = args.includes('--no-agent') ? 'off' : flagValue(args, '--agent') as AgentSetting | undefined;
+  if (agentFlag !== undefined && !['auto', 'claude', 'codex', 'off'].includes(agentFlag)) throw new Error(`Invalid agent: ${agentFlag}`);
   const config = await loadConfig(process.cwd(), { port: parsePort(portFlag), agent: agentFlag });
   if (command === 'changes') return void process.stdout.write(`${formatChanges(await pendingChanges(process.cwd()), args.includes('--json') ? 'json' : args.includes('--brief') ? 'brief' : 'agent')}\n`);
   if (command === 'ack') {
     const id = args.includes('--all') ? 'all' : args[1];
     if (id === undefined) throw new Error('Usage: motionworks ack <id>|--all');
-    const acknowledged = await runAck(process.cwd(), id, config.port);
+    const acknowledged = await runAck(process.cwd(), id, config.port, config.token);
     process.stdout.write(`Acknowledged ${acknowledged.length} change${acknowledged.length === 1 ? '' : 's'}.\n`);
     return;
   }
@@ -57,8 +59,10 @@ async function main(): Promise<void> {
   const warning = await checkDrift({ cwd: process.cwd(), packageVersion: PACKAGE_VERSION });
   if (warning !== null) process.stderr.write(`${warning}\n`);
   try {
-    const daemon = await startDaemon({ projectRoot: process.cwd(), port: config.port, agentSetting: config.agent, staticDir: command === 'serve' ? resolve(args[1] ?? '.') : undefined });
+    const detectedAgent = config.agent === 'off' ? null : config.agent === 'auto' ? detectAgent(process.env) : config.agent;
+    const daemon = await startDaemon({ projectRoot: process.cwd(), port: config.port, agentSetting: config.agent, agentTimeoutMs: config.agentTimeoutMs, token: config.token, log: (message) => process.stderr.write(`MotionWorks: ${message}\n`), staticDir: command === 'serve' ? resolve(args[1] ?? '.') : undefined });
     process.stderr.write(`MotionWorks daemon listening on 127.0.0.1:${daemon.port}\n`);
+    process.stderr.write(`MotionWorks agent: ${detectedAgent === null ? 'disabled (manual hand-off)' : `${detectedAgent} will be spawned for ambiguous changes`}\n`);
     const shutdown = (): void => { void daemon.stop().then(() => process.exit(0)); };
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);

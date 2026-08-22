@@ -47,6 +47,7 @@ export class OverlaySession {
   private pendingCorrections = new Map<string, Map<string, TypeCorrection>>();
   private pendingListeners = new Set<() => void>();
   private pendingVersion = 0;
+  private committing = new Set<string>();
   private applyingOwnChange = false;
   private stylesUnsub: (() => void) | null = null;
 
@@ -101,6 +102,7 @@ export class OverlaySession {
     this.stylesUnsub?.();
     this.stylesUnsub = null;
     this.knownEffectIds.clear();
+    this.committing.clear();
     this.connectionListeners.clear();
     this.cachedSnapshot = null;
   }
@@ -217,6 +219,7 @@ export class OverlaySession {
   }
 
   commit(effectId: string): boolean {
+    if (this.committing.has(effectId)) return false;
     const effect = this.state.getEffect(effectId);
     if (effect === undefined) return false;
     const corrections = [
@@ -250,8 +253,12 @@ export class OverlaySession {
       changes,
       ...(corrections.length > 0 && { typeCorrections: corrections }),
     };
+    this.committing.add(effectId);
+    this.notifyPending();
     void this.daemon.commit(request).then((result) => {
+      this.committing.delete(effectId);
       if (result !== null) this.pendingCorrections.delete(effectId);
+      this.notifyPending();
     });
     return true;
   }
@@ -259,11 +266,11 @@ export class OverlaySession {
   isCommitPending(effectId: string | null): boolean {
     return (
       effectId !== null &&
-      this.entries.some(
+      (this.committing.has(effectId) || this.entries.some(
         (entry) =>
           entry.effectId === effectId &&
           (entry.status === "pending" || entry.status === "agent-working"),
-      )
+      ))
     );
   }
 
@@ -275,6 +282,10 @@ export class OverlaySession {
     return this.entries
       .filter((entry) => entry.status === "pending")
       .map(({ id, effectId, effectName }) => ({ id, effectId, effectName }));
+  }
+
+  isAgentWorking(): boolean {
+    return this.entries.some((entry) => entry.status === 'agent-working');
   }
 
   getEntryStatus(effectId: string | null): JournalEntry["status"] | null {
@@ -289,6 +300,27 @@ export class OverlaySession {
     const ids = this.getAgentQueue().map((entry) => entry.id);
     if (ids.length === 0) return "";
     return `Run \`npx motionworks changes\` and apply them, then ${ids.map((id) => `\`npx motionworks ack ${id}\``).join(", ")}.`;
+  }
+
+  async copyAgentPrompt(): Promise<boolean> {
+    const text = this.buildAgentPrompt();
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand('copy');
+        textarea.remove();
+        return copied;
+      } catch {
+        return false;
+      }
+    }
   }
 
   getPendingVersion(): number {

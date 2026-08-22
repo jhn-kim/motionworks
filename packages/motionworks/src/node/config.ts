@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export type AgentSetting = 'auto' | 'claude' | 'codex' | 'off';
-export interface MotionWorksConfig { port: number; agent: AgentSetting; agentTimeoutMs: number }
+export interface MotionWorksConfig { port: number; agent: AgentSetting; agentTimeoutMs: number; token?: string }
 export type ConfigOverrides = Partial<MotionWorksConfig>;
 
 export function parsePort(raw: string | number | undefined): number | undefined {
@@ -22,9 +22,11 @@ export async function loadConfig(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
+  const token = overrides.token ?? file.token;
   return {
     port: overrides.port ?? parsePort(env.MOTIONWORKS_PORT) ?? parsePort(file.port) ?? 52340,
     agent: overrides.agent ?? file.agent ?? 'auto',
     agentTimeoutMs: overrides.agentTimeoutMs ?? file.agentTimeoutMs ?? 120_000,
+    ...(typeof token === 'string' && token !== '' && { token }),
   };
 }

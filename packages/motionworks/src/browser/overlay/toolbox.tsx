@@ -24,6 +24,7 @@ export interface Tool {
   // last-clicked tracking — used for expandable type tools, where several
   // can be active (expanded) at once.
   selected?: boolean;
+  pulse?: boolean;
   // Hold-style tools (press and keep pressed — e.g. compare-with-baseline).
   // When provided, pointerdown/up drive these instead of a click action.
   onHoldStart?: () => void;
@@ -67,8 +68,10 @@ const ICON_CLICK_ANIMATION: Record<string, string> = {};
 
 const ICON_ANIMATION_CSS = `
 @keyframes ms-ico-spin { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+@keyframes ms-ico-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 .ms-ico { display: grid; place-items: center; }
 .ms-ico-spin { animation: ms-ico-spin 380ms cubic-bezier(0.35, 0, 0.25, 1); }
+.ms-ico-pulse { animation: ms-ico-pulse 800ms ease-in-out infinite; }
 /* One unified settle-breath as the open morph lands: transform scales the
    whole box as a rigid shape, so both edges spring together — the fluid
    overshoot without two animated properties interfering. */
@@ -555,11 +558,7 @@ function ToolButton({
     >
       <span
         key={clickCount}
-        className={
-          clickCount > 0 && clickAnimation !== undefined
-            ? `ms-ico ms-ico-${clickAnimation}`
-            : "ms-ico"
-        }
+        className={tool.pulse ? 'ms-ico ms-ico-pulse' : clickCount > 0 && clickAnimation !== undefined ? `ms-ico ms-ico-${clickAnimation}` : 'ms-ico'}
       >
         {tool.icon}
       </span>

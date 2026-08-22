@@ -11,7 +11,7 @@ const status = {
   port: 52340,
   projectRoot: "/tmp/project",
   pending: 0,
-  agent: { configured: "off" as const, enabled: false, running: false },
+  agent: { enabled: false, command: null, running: false },
 };
 const response = (value: unknown): Response =>
   new Response(JSON.stringify(value), { status: 200 });
@@ -104,6 +104,22 @@ describe("DaemonClient", () => {
       credentials: "omit",
       cache: "no-store",
     });
+    client.stop();
+  });
+
+  it('preserves a daemon token on POST requests', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/status') return response(status);
+      if (url.pathname === '/pending') return response([]);
+      return response({ id: 'change-1' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new DaemonClient('http://127.0.0.1:52340?token=secret');
+    client.start();
+    await vi.waitFor(() => expect(client.isConnected()).toBe(true));
+    await client.commit({ page: '/', effectId: 'x', effectName: 'X', elementSelector: '.x', changes: [] });
+    expect(fetchMock.mock.calls.filter(([input]) => new URL(String(input)).pathname === '/commit').every(([input]) => new URL(String(input)).searchParams.get('token') === 'secret')).toBe(true);
     client.stop();
   });
 });

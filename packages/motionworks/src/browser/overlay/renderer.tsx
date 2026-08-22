@@ -19,7 +19,7 @@ import { type ArmedTool } from "./cursor-tool.js";
 import { humanizeEffectName } from "./display-name.js";
 import { ElementsPanel, LayersPanel, scopedEffects } from "./global-panels.js";
 import { NodeHighlight } from "./highlight.js";
-import { useConnection, useSessionState } from "./hooks.js";
+import { useAgentQueue, useAgentWorking, useConnection, useEntryStatus, usePendingCommit, useSessionState } from "./hooks.js";
 import { ActivationReveal } from "./reveal.js";
 import { curveForType } from "./scale.js";
 import { Scrubber } from "./scrubber.js";
@@ -301,6 +301,22 @@ function DynamicToolbox({
   onClose,
 }: DynamicToolboxProps): React.JSX.Element {
   const session = useOverlaySession();
+  const agentQueue = useAgentQueue();
+  const agentWorking = useAgentWorking();
+  const effectId = selectedEffect?.id ?? null;
+  const entryStatus = useEntryStatus(effectId);
+  const pendingApply = usePendingCommit(effectId);
+  const [appliedMarker, setAppliedMarker] = useState(false);
+  const commitVersionRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (entryStatus !== 'applied' || commitVersionRef.current !== session.diffs.getVersion()) {
+      setAppliedMarker(false);
+      return;
+    }
+    setAppliedMarker(true);
+    const timer = window.setTimeout(() => setAppliedMarker(false), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [effectId, entryStatus, session]);
 
   // Which family's slider panel is expanded (one at a time), and which
   // non-scalar editor (gradient / easing curve / path) is showing.
@@ -312,8 +328,9 @@ function DynamicToolbox({
   // hold-to-compare with the pointer elsewhere.
   const [comparing, setComparing] = useState(false);
 
-  const effectId = selectedEffect?.id ?? null;
   useEffect(() => {
+    commitVersionRef.current = null;
+    setAppliedMarker(false);
     setComparing(false);
     // Everything tool-shaped resets on selection change — panel, editor,
     // and the layers list all belong to the previous selection.
@@ -358,11 +375,14 @@ function DynamicToolbox({
   // Live drags only surface via the diff store's `to`; type overrides only
   // via the override store. Subscribe to both so the panels re-render with
   // fresh values (same pattern the SVG layer used).
-  useSyncExternalStore(
+  const diffVersion = useSyncExternalStore(
     (l) => session.diffs.subscribe(l),
     () => session.diffs.getVersion(),
     () => 0,
   );
+  useEffect(() => {
+    if (appliedMarker && commitVersionRef.current !== diffVersion) setAppliedMarker(false);
+  }, [appliedMarker, diffVersion]);
   useSyncExternalStore(
     (l) => session.typeOverrides.subscribe(l),
     () => session.typeOverrides.getVersion(),
@@ -422,9 +442,11 @@ function DynamicToolbox({
     // so the bar's width is frozen for the whole editing session and the
     // first edit lights them up in place instead of shifting the layout.
     const editing = openFamily !== null || openEditor !== null;
+    const committedDiff = commitVersionRef.current === diffVersion;
+    const suppressed = committedDiff && (pendingApply || entryStatus === 'applied');
     const verbsVisible =
-      hasSelection && (hasDiff || hasPendingCorrections || editing);
-    const verbsLive = hasSelection && (hasDiff || hasPendingCorrections);
+      hasSelection && (hasDiff || hasPendingCorrections || editing || appliedMarker);
+    const verbsLive = hasSelection && (hasDiff || hasPendingCorrections) && !suppressed;
     // Replay: a capability-declared replay wins (the effect re-runs itself
     // via the reserved key). Otherwise, effects on clickable elements get a
     // simulated press — selection swallows genuine clicks, so this is the
@@ -492,15 +514,16 @@ function DynamicToolbox({
         },
         {
           id: "apply",
-          label: verbsLive ? "Apply changes" : "Apply — make a change first",
+          label: appliedMarker ? "Applied" : verbsLive ? "Apply changes" : "Apply — make a change first",
           kind: "verb",
           icon: ICONS.apply,
           tint: "rgb(126, 224, 140)",
           hoverColor: "rgb(168, 242, 180)",
-          disabled: !verbsLive,
-          selected: false,
+          disabled: !verbsLive || appliedMarker,
+          selected: appliedMarker,
+          pulse: appliedMarker,
           onClick: () => {
-            session.commit(selectedEffect.id);
+            if (session.commit(selectedEffect.id)) commitVersionRef.current = session.diffs.getVersion();
           },
         },
       );
@@ -580,6 +603,10 @@ function DynamicToolbox({
     showLayers,
     effectCount,
     timingInScope,
+    appliedMarker,
+    diffVersion,
+    pendingApply,
+    entryStatus,
     onClose,
   ]);
 
@@ -745,6 +772,9 @@ function DynamicToolbox({
   };
 
   const openPanels: React.ReactNode[] = [];
+  if (agentWorking || agentQueue.length > 0) {
+    openPanels.push(<AgentHandoffNotice key="__agent" queue={agentQueue} working={agentWorking} />);
+  }
   // The layers button toggles the navigator: the page-wide inventory when
   // nothing is selected, the selection-scoped layers list otherwise.
   if (showLayers) {
@@ -837,6 +867,35 @@ function DynamicToolbox({
         closing={closing}
       />
     </>
+  );
+}
+
+function AgentHandoffNotice({
+  queue,
+  working,
+}: {
+  queue: { effectId: string; effectName: string }[];
+  working: boolean;
+}): React.JSX.Element {
+  const session = useOverlaySession();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  const names = queue.map((item) => humanizeEffectName(item.effectName)).join(', ');
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', fontSize: 12, lineHeight: 1.35, whiteSpace: 'nowrap' }}>
+      <span style={{ color: 'rgba(255, 255, 255, 0.9)' }}>
+        {working ? <><span aria-hidden="true" style={{ display: 'inline-block', marginRight: 7, animation: 'ms-ico-spin 900ms linear infinite' }}>◌</span>Agent is applying…</> : <>{queue.length === 1 ? '1 change needs' : `${String(queue.length)} changes need`} your agent{names === '' ? null : <span style={{ color: 'rgba(255, 255, 255, 0.55)' }}> — {names}</span>}</>}
+      </span>
+      {!working && queue.length > 0 ? (
+        <button type="button" onClick={() => { void session.copyAgentPrompt().then(setCopied); }} style={{ border: 'none', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: copied ? 'rgb(126, 224, 140)' : 'rgba(255, 255, 255, 0.92)', background: GLASS.fill, whiteSpace: 'nowrap' }}>
+          {copied ? 'Copied ✓' : 'Copy prompt'}
+        </button>
+      ) : null}
+    </div>
   );
 }
 

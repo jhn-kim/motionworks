@@ -15,5 +15,6 @@ describe('loadConfig', () => {
     expect(await loadConfig(root, {}, { MOTIONWORKS_PORT: '4001' })).toEqual({ port: 4001, agent: 'codex', agentTimeoutMs: 99 });
     expect(await loadConfig(root, { port: 4002, agent: 'off' }, { MOTIONWORKS_PORT: '4001' })).toEqual({ port: 4002, agent: 'off', agentTimeoutMs: 99 });
   });
+  it('loads an optional token', async () => { await writeFile(join(root, 'motionworks.config.json'), JSON.stringify({ token: 'secret' })); expect(await loadConfig(root, {}, {})).toMatchObject({ token: 'secret' }); });
   it('parses valid ports and rejects invalid ones', () => { expect(parsePort('52340')).toBe(52340); expect(parsePort('bad')).toBeUndefined(); expect(parsePort('65536')).toBeUndefined(); });
 });

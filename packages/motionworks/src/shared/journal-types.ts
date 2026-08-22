@@ -48,5 +48,5 @@ export interface StatusResponse {
   port: number;
   projectRoot: string;
   pending: number;
-  agent: { configured: 'auto' | 'claude' | 'codex' | 'off'; enabled: boolean; running: boolean };
+  agent: { enabled: boolean; command: 'claude' | 'codex' | null; running: boolean };
 }

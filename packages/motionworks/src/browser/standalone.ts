@@ -28,7 +28,7 @@ Object.assign(window as typeof window & { MotionWorks?: typeof api }, { MotionWo
 
 const script = document.currentScript as HTMLScriptElement | null;
 if (script?.dataset.autoMount !== 'false') {
-  const daemonUrl = script?.src ? new URL(script.src).origin : undefined;
+  const daemonUrl = script?.src ? (() => { const url = new URL(script.src); const token = url.searchParams.get('token'); return `${url.origin}${token === null ? '' : `?token=${encodeURIComponent(token)}`}`; })() : undefined;
   const autoMount = (): void => { mount({ daemonUrl }); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', autoMount, { once: true });
   else autoMount();

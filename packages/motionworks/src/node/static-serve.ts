@@ -11,7 +11,7 @@ const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
 };
 
-export function createStaticHandler(dir: string): (req: IncomingMessage, res: ServerResponse) => Promise<boolean> {
+export function createStaticHandler(dir: string, token?: string): (req: IncomingMessage, res: ServerResponse) => Promise<boolean> {
   const root = resolve(dir);
   return async (req, res) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
@@ -29,7 +29,8 @@ export function createStaticHandler(dir: string): (req: IncomingMessage, res: Se
       res.setHeader('Cache-Control', 'no-store');
       if (extension === '.html') {
         const html = content.toString('utf8');
-        content = Buffer.from(html.replace(/<\/body>/i, '<script src="/motionworks.js"></script></body>'));
+        const scriptSrc = `/motionworks.js${token === undefined ? '' : `?token=${encodeURIComponent(token)}`}`;
+        content = Buffer.from(html.replace(/<\/body>/i, `<script src="${scriptSrc}"></script></body>`));
       }
       res.statusCode = 200;
       if (req.method === 'HEAD') res.end(); else res.end(content);

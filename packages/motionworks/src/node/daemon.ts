@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { CommitRequest, JournalChange, JournalEntry, SelectRequest, StatusResponse } from '../shared/index.js';
 
 import type { AgentSetting } from './config.js';
+import { createAgentRunner, detectAgent, type AgentCommand, type AgentRunner } from './agent.js';
 import { applyCors } from './cors.js';
 import { ackEntries, appendEntry, pruneAppliedEntries, readJournal, writeSelected } from './journal.js';
 import { updateEntry } from './journal.js';
@@ -18,8 +19,12 @@ export interface DaemonOptions {
   projectRoot: string;
   port: number;
   staticDir?: string;
-  agent?: { run(entry: JournalEntry): Promise<{ ok: boolean }> };
+  agent?: AgentRunner;
   agentSetting?: AgentSetting;
+  agentTimeoutMs?: number;
+  env?: NodeJS.ProcessEnv;
+  token?: string;
+  log?: (message: string) => void;
   overlayBundlePath?: string;
 }
 export interface RunningDaemon { server: Server; port: number; stop(): Promise<void> }
@@ -62,11 +67,24 @@ function isSelect(value: unknown): value is SelectRequest {
 
 export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   await pruneAppliedEntries(options.projectRoot, Date.now() - RETENTION_MS);
-  const staticHandler = options.staticDir === undefined ? null : createStaticHandler(options.staticDir);
+  for (const entry of await readJournal(options.projectRoot)) {
+    if (entry.status === 'agent-working') await updateEntry(options.projectRoot, entry.id, { status: 'pending', error: 'Agent interrupted by daemon restart' });
+  }
+  const configuredCommand: AgentCommand | null = options.agentSetting === 'off'
+    ? null
+    : options.agentSetting === 'claude' || options.agentSetting === 'codex'
+      ? options.agentSetting
+      : detectAgent(options.env);
+  const agent = options.agent ?? (configuredCommand === null ? null : createAgentRunner({ command: configuredCommand, projectRoot: options.projectRoot, timeoutMs: options.agentTimeoutMs ?? 120_000, env: options.env }));
+  const staticHandler = options.staticDir === undefined ? null : createStaticHandler(options.staticDir, options.token);
   const server = createServer(async (req, res) => {
     if (!applyCors(req, res)) return;
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     try {
+      if (req.method === 'POST' && options.token !== undefined && url.searchParams.get('token') !== options.token) {
+        sendJson(res, 401, { error: 'Invalid MotionWorks token' });
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/status') {
         const entries = await readJournal(options.projectRoot);
         const address = server.address();
@@ -75,7 +93,7 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
           port: typeof address === 'object' && address !== null ? address.port : options.port,
           projectRoot: options.projectRoot,
           pending: entries.filter((entry) => entry.status !== 'applied').length,
-          agent: { configured: options.agentSetting ?? 'auto', enabled: false, running: false },
+          agent: { enabled: agent !== null, command: agent?.command ?? configuredCommand, running: agent?.running ?? false },
         };
         sendJson(res, 200, status);
         return;
@@ -83,7 +101,7 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
       if (req.method === 'GET' && url.pathname === '/pending') {
         const entries = await readJournal(options.projectRoot);
         const origin = req.headers.origin;
-        sendJson(res, 200, entries.filter((entry) => entry.status !== 'applied' && (url.searchParams.get('all') === '1' || origin === undefined || entry.origin === origin)));
+        sendJson(res, 200, entries.filter((entry) => url.searchParams.get('all') === '1' || origin === undefined || entry.origin === origin));
         return;
       }
       if (req.method === 'GET' && url.pathname === '/motionworks.js') {
@@ -111,8 +129,24 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
           const applied = await updateEntry(options.projectRoot, entry.id, { status: 'applied', appliedAt: Date.now(), appliedBy: 'css', files: result.files, error: undefined });
           sendJson(res, 201, applied);
         } else {
-          const pending = await updateEntry(options.projectRoot, entry.id, { error: result.reason });
-          sendJson(res, 201, pending);
+          if (agent === null) {
+            const pending = await updateEntry(options.projectRoot, entry.id, { error: result.reason });
+            sendJson(res, 201, pending);
+          } else {
+            options.log?.(`direct write skipped (${result.reason}) → ${agent.command} ${agent.command === 'claude' ? '-p' : 'exec'}`);
+            const working = await updateEntry(options.projectRoot, entry.id, { status: 'agent-working', error: result.reason });
+            if (working === null) throw new Error(`Journal entry disappeared: ${entry.id}`);
+            sendJson(res, 201, working);
+            void agent.run(working).then(async (agentResult) => {
+              if (agentResult.ok) await updateEntry(options.projectRoot, entry.id, { status: 'applied', appliedAt: Date.now(), appliedBy: 'agent', error: undefined });
+              else {
+                options.log?.(`${agent.command} failed: ${agentResult.error ?? 'unknown error'}`);
+                await updateEntry(options.projectRoot, entry.id, { status: 'pending', error: agentResult.error ?? 'Agent failed' });
+              }
+            }).catch(async (error: unknown) => {
+              await updateEntry(options.projectRoot, entry.id, { status: 'pending', error: String(error) });
+            });
+          }
         }
         return;
       }

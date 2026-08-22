@@ -6,6 +6,7 @@ import type { JournalEntry } from '../shared/index.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { formatChanges, formatStatus, runAck, runRevert } from './commands.js';
 import { appendEntry, readJournal, writeSelected } from './journal.js';
+import { startDaemon } from './daemon.js';
 
 let root: string;
 const entry: JournalEntry = { id: 'abc', createdAt: 1, origin: '', page: '/', effectId: 'card#1', effectName: 'Card', elementSelector: '.card', changes: [{ param: 'radius', type: 'spatial-radius', from: 100, to: 120 }], status: 'pending' };
@@ -28,6 +29,18 @@ describe('commands', () => {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     expect(await runAck(root, 'abc', port)).toEqual(['abc']);
     expect(await readJournal(root)).toEqual([]);
+  });
+
+  it('acknowledges through a token-protected daemon', async () => {
+    await appendEntry(root, entry);
+    const daemon = await startDaemon({ projectRoot: root, port: 0, agentSetting: 'off', token: 'secret token' });
+    try {
+      await expect(runAck(root, 'abc', daemon.port)).rejects.toThrow('daemon returned 401');
+      expect(await runAck(root, 'abc', daemon.port, 'secret token')).toEqual(['abc']);
+      expect(await readJournal(root)).toEqual([]);
+    } finally {
+      await daemon.stop();
+    }
   });
 
   it('includes the saved selection in status', async () => {

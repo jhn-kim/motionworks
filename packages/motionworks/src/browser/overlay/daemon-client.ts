@@ -44,6 +44,14 @@ export class DaemonClient {
     private readonly log: (msg: string) => void = () => {},
   ) {}
 
+  private endpoint(path: string): string {
+    const base = new URL(this.baseUrl);
+    const token = base.searchParams.get('token');
+    const url = new URL(path, base.origin);
+    if (token !== null) url.searchParams.set('token', token);
+    return url.href;
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;
@@ -122,7 +130,7 @@ export class DaemonClient {
     }
     let status: StatusResponse | null = null;
     try {
-      const res = await fetch(`${this.baseUrl}/status`, FETCH_OPTIONS);
+      const res = await fetch(this.endpoint('/status'), FETCH_OPTIONS);
       if (res.ok) status = (await res.json()) as StatusResponse;
     } catch (err) {
       this.log(`status poll failed: ${String(err)}`);
@@ -153,7 +161,7 @@ export class DaemonClient {
     }
     this.pendingInFlight = true;
     try {
-      const res = await fetch(`${this.baseUrl}/pending`, FETCH_OPTIONS);
+      const res = await fetch(this.endpoint('/pending'), FETCH_OPTIONS);
       if (res.ok) {
         const entries = (await res.json()) as JournalEntry[];
         const json = JSON.stringify(entries);
@@ -202,7 +210,7 @@ export class DaemonClient {
 
   private async post(path: string, payload: unknown): Promise<unknown | null> {
     try {
-      const res = await fetch(`${this.baseUrl}${path}`, {
+      const res = await fetch(this.endpoint(path), {
         ...FETCH_OPTIONS,
         method: "POST",
         headers: { "Content-Type": "application/json" },

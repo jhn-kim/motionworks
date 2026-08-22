@@ -1,16 +1,17 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startDaemon, type RunningDaemon } from './daemon.js';
+import type { AgentRunner } from './agent.js';
 import { appendEntry, readJournal } from './journal.js';
 
 let root: string;
 let daemon: RunningDaemon | null;
-beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'motionworks-daemon-')); daemon = await startDaemon({ projectRoot: root, port: 0 }); });
+beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'motionworks-daemon-')); daemon = await startDaemon({ projectRoot: root, port: 0, agentSetting: 'off' }); });
 afterEach(async () => { await daemon?.stop(); await rm(root, { recursive: true, force: true }); });
 
-const commit = (page = '/demo') => ({ page, effectId: 'card#1', effectName: 'Card', elementSelector: '.card', changes: [{ param: 'radius', type: 'spatial-radius', from: 100, to: 120, var: '--mw-radius', fromCss: '100px', toCss: '120px' }] });
+const commit = (page = '/demo') => ({ page, effectId: 'card#1', effectName: 'Card', elementSelector: '.card', changes: [{ param: 'radius', type: 'spatial-radius' as const, from: 100, to: 120, var: '--mw-radius', fromCss: '100px', toCss: '120px' }] });
 const request = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${daemon!.port}${path}`, init);
 
 describe('daemon', () => {
@@ -59,7 +60,31 @@ describe('daemon', () => {
       id: 'recent', createdAt: now, appliedAt: now,
       origin: '', page: '/', effectId: 'card#1', effectName: 'Card', elementSelector: '.card', changes: [], status: 'applied',
     });
-    daemon = await startDaemon({ projectRoot: root, port: 0 });
+    daemon = await startDaemon({ projectRoot: root, port: 0, agentSetting: 'off' });
     expect((await readJournal(root)).map((entry) => entry.id)).toEqual(['recent']);
+  });
+
+  it.each([[true, 'applied'], [false, 'pending']] as const)('records agent result %s as %s', async (ok, expected) => {
+    await daemon!.stop(); daemon = null;
+    const agent: AgentRunner = { command: 'claude', running: false, run: vi.fn(async () => ok ? { ok: true } : { ok: false, error: 'agent failed' }) };
+    daemon = await startDaemon({ projectRoot: root, port: 0, agent });
+    const created = await request('/commit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(commit()) });
+    expect((await created.json() as { status: string }).status).toBe('agent-working');
+    await vi.waitFor(async () => expect((await readJournal(root))[0]?.status).toBe(expected));
+    const saved = (await readJournal(root))[0]!;
+    if (ok) expect(saved).toMatchObject({ appliedBy: 'agent', status: 'applied' });
+    else expect(saved).toMatchObject({ status: 'pending', error: 'agent failed' });
+  });
+
+  it('resets interrupted agent work on restart', async () => {
+    await appendEntry(root, { ...commit(), id: 'working', createdAt: Date.now(), origin: '', status: 'agent-working' });
+    await daemon!.stop(); daemon = await startDaemon({ projectRoot: root, port: 0, agentSetting: 'off' });
+    expect((await readJournal(root)).find((entry) => entry.id === 'working')).toMatchObject({ status: 'pending' });
+  });
+
+  it('requires a configured token on POST requests', async () => {
+    await daemon!.stop(); daemon = await startDaemon({ projectRoot: root, port: 0, agentSetting: 'off', token: 'secret' });
+    expect((await request('/select', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ effectId: 'card#1', effectName: 'Card', elementSelector: '.card' }) })).status).toBe(401);
+    expect((await request('/select?token=secret', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ effectId: 'card#1', effectName: 'Card', elementSelector: '.card' }) })).status).toBe(200);
   });
 });
