@@ -72,7 +72,7 @@ export async function confirm(
 ): Promise<boolean> {
   const rl = createInterface({ input, output, terminal: false });
   try {
-    const prompt = `${brand("?")} ${question} (${green("y")}${gray("/")}${mutedRed("n")}) `;
+    const prompt = `${brand("◆")} ${question} (${green("y")}${gray("/")}${mutedRed("n")}) `;
     const answer = (await rl.question(prompt)).trim().toLowerCase();
     return answer === "y" || answer === "yes";
   } finally {

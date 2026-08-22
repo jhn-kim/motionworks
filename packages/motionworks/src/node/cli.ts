@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
 
-import { runSetup } from "./setup.js";
+import { isProjectRoot, runSetup } from "./setup.js";
 import { checkDrift } from "./drift.js";
 import {
   formatChanges,
@@ -23,7 +23,7 @@ const HELP = `Usage:
   npx motionworks ack <id>|--all                              Acknowledge changes.
   npx motionworks status                                      Show daemon and selection.
   npx motionworks revert <id>                                 Revert an applied change.
-  npx motionworks init [--yes] [--stanza-only]                Set up MotionWorks.
+  npx motionworks init [--yes] [--stanza-only] [--force]      Set up MotionWorks.
   npx motionworks help | --version
 `;
 
@@ -42,11 +42,20 @@ async function main(): Promise<void> {
   if (command === "help" || args.includes("--help") || args.includes("-h"))
     return void process.stdout.write(HELP);
   if (command === "init") {
+    const cwd = process.cwd();
+    if (!args.includes("--force") && !(await isProjectRoot(cwd))) {
+      process.stderr.write(
+        `[motionworks] ${cwd} doesn't look like a project root (no package.json or .git).\n` +
+          `Run \`motionworks init\` from your app's root, or pass --force to set up here anyway.\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
     process.stdout.write(
-      `${banner(PACKAGE_VERSION)}\n  ${dim(`Setting up in ${process.cwd()}`)}\n\n`,
+      `${banner(PACKAGE_VERSION)}\n  ${dim(`Setting up in ${cwd}`)}\n\n`,
     );
     const result = await runSetup({
-      cwd: process.cwd(),
+      cwd,
       packageVersion: PACKAGE_VERSION,
       yes: args.includes("--yes") || args.includes("-y"),
       stanzaOnly: args.includes("--stanza-only"),

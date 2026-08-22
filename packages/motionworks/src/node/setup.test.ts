@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -8,6 +8,7 @@ import {
   detectInstallCommand,
   ensureGitignore,
   ensureReactInstalled,
+  isProjectRoot,
   removeStaleMcpEntry,
   runSetup,
 } from "./setup.js";
@@ -139,7 +140,7 @@ describe("ensureReactInstalled", () => {
 });
 
 describe("runSetup", () => {
-  it("supports non-React projects and prints standalone next steps", async () => {
+  it("supports non-React projects and prints agent-driven next steps", async () => {
     await writeFile(
       join(cwd, "package.json"),
       JSON.stringify({ dependencies: { vue: "^3" } }),
@@ -157,9 +158,25 @@ describe("runSetup", () => {
       "stale-mcp-entry-absent",
       "react-skipped",
     ]);
-    expect(logs.join("\n")).toContain(
-      '<script src="http://127.0.0.1:52340/motionworks.js"></script>',
-    );
-    expect(logs.join("\n")).toContain("npx motionworks serve .");
+    const output = logs.join("\n");
+    expect(output).toContain("Tell your coding agent to set up MotionWorks");
+    expect(output).toContain("MOTIONWORKS.md");
+    expect(output).toContain("npx motionworks");
+  });
+});
+
+describe("isProjectRoot", () => {
+  it("is true when package.json is present", async () => {
+    await writeFile(join(cwd, "package.json"), "{}");
+    expect(await isProjectRoot(cwd)).toBe(true);
+  });
+
+  it("is true when .git is present", async () => {
+    await mkdir(join(cwd, ".git"));
+    expect(await isProjectRoot(cwd)).toBe(true);
+  });
+
+  it("is false in a bare directory", async () => {
+    expect(await isProjectRoot(cwd)).toBe(false);
   });
 });

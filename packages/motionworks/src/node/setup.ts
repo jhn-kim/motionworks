@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFile, unlink, writeFile } from "node:fs/promises";
+import { access, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
@@ -20,6 +20,25 @@ export type SetupOutcome =
   | { kind: "react-skipped"; reason: string }
   | { kind: "react-install-failed"; packageManager: string; exitCode: number }
   | { kind: "cancelled"; step: "gitignore" | "install"; reason: string };
+
+/**
+ * True when `cwd` looks like a project root — it has a `package.json` or a
+ * `.git`. `init` guards on this so it never scribbles a stanza, guide, and
+ * `.gitignore` line into an unrelated directory like `$HOME` or the Desktop.
+ * A stray global `CLAUDE.md` stanza would also duplicate the real per-project
+ * one whenever an agent works inside an actual MotionWorks project.
+ */
+export async function isProjectRoot(cwd: string): Promise<boolean> {
+  for (const marker of ["package.json", ".git"]) {
+    try {
+      await access(join(cwd, marker));
+      return true;
+    } catch {
+      // absent — keep looking
+    }
+  }
+  return false;
+}
 
 /** Command that installs a runtime dependency, per package manager. */
 export function detectInstallCommand(lockfiles: string[]): {
@@ -252,23 +271,12 @@ export async function runSetup(
   const initOutcomes = await runInit(options);
 
   if (!stanzaOnly) {
-    const mountNeeded = setupOutcomes.some(
-      (o) =>
-        o.kind === "react-installed" || o.kind === "react-already-installed",
-    );
     log("");
     log(heading("Next steps"));
-    if (mountNeeded) {
-      log(
-        `  ${cyan("1.")} Mount the overlay once in your app — follow "Mounting the overlay" in ${cyan(GUIDE_FILE)} ${dim("(dev-only; renders nothing in production)")}.`,
-      );
-      log(`  ${cyan("2.")} Start the daemon with ${cyan("npx motionworks")}.`);
-    } else {
-      log(
-        `  ${cyan("1.")} Add ${cyan('<script src="http://127.0.0.1:52340/motionworks.js"></script>')} before </body>.`,
-      );
-      log(`  ${cyan("2.")} Run ${cyan("npx motionworks serve .")}.`);
-    }
+    log(
+      `  ${cyan("1.")} Tell your coding agent to set up MotionWorks. It reads ${cyan(GUIDE_FILE)}, mounts the overlay in your app, and starts it with ${cyan("npx motionworks")}.`,
+    );
+    log(`  ${dim(`Prefer to do it by hand? Follow ${GUIDE_FILE}.`)}`);
   }
 
   return { setupOutcomes, initOutcomes };

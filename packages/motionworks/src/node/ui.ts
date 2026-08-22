@@ -18,13 +18,22 @@ const sgr =
 const bold = sgr(1, 22);
 export const dim = sgr(2, 22);
 export const cyan = sgr(36, 39);
-/** MotionWorks brand yellow (#faea37). */
-export const brand = sgr("38;2;250;234;55", 39);
+/**
+ * MotionWorks brand yellow (approximates #faea37). Uses a 256-color index, not
+ * 24-bit truecolor, so terminals without truecolor support — e.g. macOS
+ * Terminal.app — render it as yellow instead of misparsing the sequence.
+ */
+export const brand = sgr("38;5;227", 39);
 export const green = sgr(32, 39);
 export const yellow = sgr(33, 39);
 export const gray = sgr(90, 39);
-/** A softer red that stays legible beside the brand yellow in prompts. */
-export const mutedRed = sgr("38;2;255;105;97", 39);
+/**
+ * A softer red that stays legible beside the brand yellow in prompts. Uses a
+ * 256-color index (not 24-bit truecolor) so terminals without truecolor
+ * support — e.g. macOS Terminal.app — parse and reset it cleanly instead of
+ * bleeding the color into every following line.
+ */
+export const mutedRed = sgr("38;5;209", 39);
 
 /** Status glyphs for step lines. Informative even when color is off. */
 export const symbols = {
