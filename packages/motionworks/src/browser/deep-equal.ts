@@ -5,7 +5,7 @@
 export function deepEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (a === null || b === null) return false;
-  if (typeof a !== 'object' || typeof b !== 'object') return false;
+  if (typeof a !== "object" || typeof b !== "object") return false;
 
   if (Array.isArray(a)) {
     if (!Array.isArray(b) || a.length !== b.length) return false;

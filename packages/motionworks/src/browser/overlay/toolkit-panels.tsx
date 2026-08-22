@@ -1,14 +1,19 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from "react";
 
-import type { MotionWorksParam, ParameterType } from '../../shared/index.js';
+import type { MotionWorksParam, ParameterType } from "../../shared/index.js";
 
-import { ColorSwatch } from './color-picker.js';
-import { useOverlaySession } from './context.js';
-import { sameTool, useCursorTool } from './cursor-tool.js';
-import { curveForType, formatReal, formatScale, valueToScale } from './scale.js';
-import { translateAnchor } from './surfaces/path.js';
-import { SurfaceContextMenu } from './surfaces/shared/context-menu.js';
-import { COLORS, FONT, GLASS, SPRING_SURFACE } from './theme.js';
+import { ColorSwatch } from "./color-picker.js";
+import { useOverlaySession } from "./context.js";
+import { sameTool, useCursorTool } from "./cursor-tool.js";
+import {
+  curveForType,
+  formatReal,
+  formatScale,
+  valueToScale,
+} from "./scale.js";
+import { translateAnchor } from "./surfaces/path.js";
+import { SurfaceContextMenu } from "./surfaces/shared/context-menu.js";
+import { COLORS, FONT, GLASS, SPRING_SURFACE } from "./theme.js";
 
 // One parameter as the toolkit panel sees it: the schema param plus the
 // live (possibly manipulated, uncommitted) value.
@@ -33,20 +38,23 @@ export interface SliderBounds {
 
 // Fallback ranges per type for schemas that omit min/max. Exported for tests.
 const TYPE_RANGES: Record<ParameterType, { min: number; max: number }> = {
-  'spatial-radius': { min: 0, max: 400 },
-  'spatial-strength': { min: 0, max: 2 },
-  'temporal-decay': { min: 0, max: 1 },
-  'temporal-response': { min: 0, max: 1 },
-  'spring-response': { min: 0, max: 1 }, // unused — spring uses SPRING_SURFACE ranges
+  "spatial-radius": { min: 0, max: 400 },
+  "spatial-strength": { min: 0, max: 2 },
+  "temporal-decay": { min: 0, max: 1 },
+  "temporal-response": { min: 0, max: 1 },
+  "spring-response": { min: 0, max: 1 }, // unused — spring uses SPRING_SURFACE ranges
   gradient: { min: 0, max: 1 },
   path: { min: 0, max: 1 },
   stagger: { min: 0, max: 600 },
   duration: { min: 0, max: 2000 },
-  'easing-curve': { min: 0, max: 1 }, // unused — curve editor is not a slider
+  "easing-curve": { min: 0, max: 1 }, // unused — curve editor is not a slider
   scalar: { min: 0, max: 1 },
 };
 
-export function sliderBoundsFor(param: MotionWorksParam, type: ParameterType): SliderBounds {
+export function sliderBoundsFor(
+  param: MotionWorksParam,
+  type: ParameterType,
+): SliderBounds {
   const base = TYPE_RANGES[type];
   let min = param.min ?? base.min;
   let max = param.max ?? base.max;
@@ -78,34 +86,39 @@ const PANEL_IN_CSS = `
 }
 `;
 
-export function ToolkitTypePanel({ type, label, effectId, entries }: PanelProps): React.JSX.Element {
+export function ToolkitTypePanel({
+  type,
+  label,
+  effectId,
+  entries,
+}: PanelProps): React.JSX.Element {
   return (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
+        display: "flex",
+        flexDirection: "column",
         gap: 4,
-        padding: '6px 10px 8px',
+        padding: "6px 10px 8px",
         // Adopt the chip's width (never dictate it) so editors fill the bar.
         width: 0,
-        minWidth: '100%',
-        boxSizing: 'border-box',
+        minWidth: "100%",
+        boxSizing: "border-box",
         // Same gooey entrance as the family tool panels: content rises and
         // fades in while the chip's own morph stretches to fit.
         // Content stays geometrically still — the chip's gooey growth is
         // the only motion, revealing it at exactly its own speed. Opacity
         // rides along on the same clock.
-        animation: 'ms-editor-in 360ms cubic-bezier(0.32, 1.12, 0.35, 1)',
+        animation: "ms-editor-in 360ms cubic-bezier(0.32, 1.12, 0.35, 1)",
       }}
     >
-      <style>{PANEL_IN_CSS}</style>
-      {label !== '' ? (
+      <style data-motionworks-overlay-style="">{PANEL_IN_CSS}</style>
+      {label !== "" ? (
         <span
           style={{
             fontSize: FONT.sizeLabel,
             letterSpacing: 0.08,
-            textTransform: 'uppercase',
-            color: 'rgba(255, 255, 255, 0.45)',
+            textTransform: "uppercase",
+            color: "rgba(255, 255, 255, 0.45)",
             fontFamily: FONT.family,
           }}
         >
@@ -137,17 +150,28 @@ function PanelParam({
   siblingCount: number;
 }): React.JSX.Element | null {
   switch (type) {
-    case 'spring-response':
-      return <SpringRows effectId={effectId} entry={entry} grouped={siblingCount > 1} />;
-    case 'gradient':
+    case "spring-response":
+      return (
+        <SpringRows
+          effectId={effectId}
+          entry={entry}
+          grouped={siblingCount > 1}
+        />
+      );
+    case "gradient":
       return <GradientRows effectId={effectId} entry={entry} />;
-    case 'path':
+    case "path":
       return <PathRows effectId={effectId} entry={entry} />;
-    case 'easing-curve':
+    case "easing-curve":
       return <EasingCurveRow effectId={effectId} entry={entry} />;
     default:
-      return typeof entry.liveValue === 'number' ? (
-        <NumericRow type={type} effectId={effectId} entry={entry} value={entry.liveValue} />
+      return typeof entry.liveValue === "number" ? (
+        <NumericRow
+          type={type}
+          effectId={effectId}
+          entry={entry}
+          value={entry.liveValue}
+        />
       ) : null;
   }
 }
@@ -180,13 +204,13 @@ function RowLabel({
         style={{
           width: 84,
           flexShrink: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
           fontSize: FONT.sizeSmall,
-          color: 'rgba(255, 255, 255, 0.82)',
+          color: "rgba(255, 255, 255, 0.82)",
           fontFamily: FONT.family,
-          cursor: 'context-menu',
+          cursor: "context-menu",
         }}
       >
         {text}
@@ -212,21 +236,21 @@ function RowLabel({
 const numberInputStyle: React.CSSProperties = {
   width: 52,
   flexShrink: 0,
-  padding: '2px 4px',
+  padding: "2px 4px",
   borderRadius: 4,
-  border: '1px solid rgba(255, 255, 255, 0.14)',
-  background: 'rgba(255, 255, 255, 0.06)',
+  border: "1px solid rgba(255, 255, 255, 0.14)",
+  background: "rgba(255, 255, 255, 0.06)",
   color: COLORS.neutralInk,
   fontFamily: FONT.mono,
   fontSize: FONT.sizeSmall,
-  outline: 'none',
+  outline: "none",
 };
 
 const rangeInputStyle: React.CSSProperties = {
   flex: 1,
   minWidth: 60,
   accentColor: COLORS.accent,
-  cursor: 'pointer',
+  cursor: "pointer",
   margin: 0,
 };
 
@@ -253,7 +277,7 @@ function SliderControl({
   bounds: SliderBounds;
   unit?: string | undefined;
   onChange: (next: number) => void;
-  axis?: 'stiffness' | 'damping' | 'mass';
+  axis?: "stiffness" | "damping" | "mass";
 }): React.JSX.Element {
   const numberRef = useRef<HTMLInputElement>(null);
   // Text being typed in the number input; null when not editing so the live
@@ -261,12 +285,25 @@ function SliderControl({
   const [draft, setDraft] = useState<string | null>(null);
 
   const { armed, arm, disarm } = useCursorTool();
-  const spec = { min: bounds.min, max: bounds.max, curve: curveForType(currentType) };
-  const tool = { effectId, paramKey, axis, label, unit, spec, type: currentType };
+  const spec = {
+    min: bounds.min,
+    max: bounds.max,
+    curve: curveForType(currentType),
+  };
+  const tool = {
+    effectId,
+    paramKey,
+    axis,
+    label,
+    unit,
+    spec,
+    type: currentType,
+  };
   const isArmed = sameTool(armed, tool);
   const scale = valueToScale(value, spec);
 
-  const clamp = (v: number): number => Math.min(bounds.max, Math.max(bounds.min, v));
+  const clamp = (v: number): number =>
+    Math.min(bounds.max, Math.max(bounds.min, v));
   const commitDraft = (raw: string): void => {
     const n = Number(raw);
     if (Number.isFinite(n)) onChange(clamp(n));
@@ -274,7 +311,7 @@ function SliderControl({
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <RowLabel
         text={label}
         effectId={effectId}
@@ -288,8 +325,8 @@ function SliderControl({
         aria-pressed={isArmed}
         title={
           isArmed
-            ? 'Armed — hover the element and scroll to adjust. Click to disarm.'
-            : 'Arm: attach to cursor, then scroll over the element to adjust'
+            ? "Armed — hover the element and scroll to adjust. Click to disarm."
+            : "Arm: attach to cursor, then scroll over the element to adjust"
         }
         onClick={() => {
           if (isArmed) disarm();
@@ -298,24 +335,24 @@ function SliderControl({
         style={{
           flex: 1,
           minWidth: 60,
-          display: 'flex',
-          alignItems: 'baseline',
-          justifyContent: 'space-between',
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
           gap: 6,
-          padding: '3px 9px',
-          border: `1px solid ${isArmed ? 'rgba(255, 255, 255, 0.55)' : GLASS.hairline}`,
+          padding: "3px 9px",
+          border: `1px solid ${isArmed ? "rgba(255, 255, 255, 0.55)" : GLASS.hairline}`,
           borderRadius: GLASS.radiusSmall,
           background: isArmed ? GLASS.fillActive : GLASS.fill,
-          color: 'rgba(255, 255, 255, 0.95)',
-          cursor: 'pointer',
+          color: "rgba(255, 255, 255, 0.95)",
+          cursor: "pointer",
           fontFamily: FONT.family,
-          transition: 'background 120ms ease, border-color 120ms ease',
+          transition: "background 120ms ease, border-color 120ms ease",
         }}
       >
         <span style={{ fontSize: FONT.sizeStrong, fontWeight: 600 }}>
           {formatScale(scale)}
         </span>
-        <span style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.55)' }}>
+        <span style={{ fontSize: 9, color: "rgba(255, 255, 255, 0.55)" }}>
           {formatReal(value, unit)}
         </span>
       </button>
@@ -323,7 +360,7 @@ function SliderControl({
         ref={numberRef}
         type="text"
         inputMode="decimal"
-        value={draft ?? formatValue(value, bounds.step) + (unit ?? '')}
+        value={draft ?? formatValue(value, bounds.step) + (unit ?? "")}
         onFocus={(e) => {
           setDraft(formatValue(value, bounds.step));
           e.target.select();
@@ -331,8 +368,9 @@ function SliderControl({
         onChange={(e) => setDraft(e.target.value)}
         onBlur={(e) => commitDraft(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') commitDraft((e.target as HTMLInputElement).value);
-          if (e.key === 'Escape') setDraft(null);
+          if (e.key === "Enter")
+            commitDraft((e.target as HTMLInputElement).value);
+          if (e.key === "Escape") setDraft(null);
         }}
         style={numberInputStyle}
         aria-label={`${label} value`}
@@ -384,10 +422,10 @@ interface SpringValue {
 
 function isSpringValue(v: unknown): v is SpringValue {
   return (
-    typeof v === 'object' &&
+    typeof v === "object" &&
     v !== null &&
-    typeof (v as SpringValue).stiffness === 'number' &&
-    typeof (v as SpringValue).damping === 'number'
+    typeof (v as SpringValue).stiffness === "number" &&
+    typeof (v as SpringValue).damping === "number"
   );
 }
 
@@ -402,8 +440,15 @@ function SpringRows({
 }): React.JSX.Element | null {
   const session = useOverlaySession();
   // A scalar spring (single number) still gets a plain slider.
-  if (typeof entry.liveValue === 'number') {
-    return <NumericRow type="scalar" effectId={effectId} entry={entry} value={entry.liveValue} />;
+  if (typeof entry.liveValue === "number") {
+    return (
+      <NumericRow
+        type="scalar"
+        effectId={effectId}
+        entry={entry}
+        value={entry.liveValue}
+      />
+    );
   }
   if (!isSpringValue(entry.liveValue)) return null;
   const spring = entry.liveValue;
@@ -416,19 +461,34 @@ function SpringRows({
     range: { min: number; max: number };
     value: number;
   }[] = [
-    { key: 'stiffness', text: 'Stiffness', range: SPRING_SURFACE.stiffnessRange, value: spring.stiffness },
-    { key: 'damping', text: 'Damping', range: SPRING_SURFACE.dampingRange, value: spring.damping },
-    { key: 'mass', text: 'Mass', range: SPRING_SURFACE.massRange, value: spring.mass ?? 1 },
+    {
+      key: "stiffness",
+      text: "Stiffness",
+      range: SPRING_SURFACE.stiffnessRange,
+      value: spring.stiffness,
+    },
+    {
+      key: "damping",
+      text: "Damping",
+      range: SPRING_SURFACE.dampingRange,
+      value: spring.damping,
+    },
+    {
+      key: "mass",
+      text: "Mass",
+      range: SPRING_SURFACE.massRange,
+      value: spring.mass ?? 1,
+    },
   ];
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {/* Only disambiguate when the effect has several spring params in the
           same panel — otherwise the section header already says it all. */}
       {grouped ? (
         <span
           style={{
             fontSize: FONT.sizeLabel,
-            color: 'rgba(255, 255, 255, 0.45)',
+            color: "rgba(255, 255, 255, 0.45)",
             fontFamily: FONT.family,
           }}
         >
@@ -443,7 +503,10 @@ function SpringRows({
           paramKey={entry.paramKey}
           currentType="spring-response"
           value={axis.value}
-          bounds={{ ...axis.range, step: stepForRange(axis.range.max - axis.range.min) }}
+          bounds={{
+            ...axis.range,
+            step: stepForRange(axis.range.max - axis.range.min),
+          }}
           onChange={(next) => set({ [axis.key]: next })}
           axis={axis.key}
         />
@@ -451,7 +514,6 @@ function SpringRows({
     </div>
   );
 }
-
 
 interface GradientStop {
   stop: number;
@@ -461,11 +523,22 @@ interface GradientStop {
 function isGradientValue(v: unknown): v is GradientStop[] {
   return (
     Array.isArray(v) &&
-    v.every((s) => typeof s === 'object' && s !== null && typeof (s as GradientStop).stop === 'number')
+    v.every(
+      (s) =>
+        typeof s === "object" &&
+        s !== null &&
+        typeof (s as GradientStop).stop === "number",
+    )
   );
 }
 
-function GradientRows({ effectId, entry }: { effectId: string; entry: PanelParamEntry }): React.JSX.Element | null {
+function GradientRows({
+  effectId,
+  entry,
+}: {
+  effectId: string;
+  entry: PanelParamEntry;
+}): React.JSX.Element | null {
   const session = useOverlaySession();
   if (!isGradientValue(entry.liveValue)) return null;
   const stops = entry.liveValue;
@@ -476,7 +549,7 @@ function GradientRows({ effectId, entry }: { effectId: string; entry: PanelParam
     commit(stops.map((s, i) => (i === index ? { ...s, ...patch } : s)));
   };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <RowLabel
         text={entry.param.label ?? entry.paramKey}
         effectId={effectId}
@@ -485,7 +558,7 @@ function GradientRows({ effectId, entry }: { effectId: string; entry: PanelParam
         onEnterExactValue={() => {}}
       />
       {stops.map((stop, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <ColorSwatch
             color={stop.color}
             onChange={(hex) => setStop(i, { color: hex })}
@@ -510,11 +583,14 @@ function GradientRows({ effectId, entry }: { effectId: string; entry: PanelParam
               width: 18,
               height: 18,
               flexShrink: 0,
-              border: 'none',
+              border: "none",
               borderRadius: 4,
-              background: 'transparent',
-              color: stops.length <= 2 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)',
-              cursor: stops.length <= 2 ? 'default' : 'pointer',
+              background: "transparent",
+              color:
+                stops.length <= 2
+                  ? "rgba(255,255,255,0.2)"
+                  : "rgba(255,255,255,0.6)",
+              cursor: stops.length <= 2 ? "default" : "pointer",
               fontSize: 12,
               lineHeight: 1,
             }}
@@ -527,18 +603,18 @@ function GradientRows({ effectId, entry }: { effectId: string; entry: PanelParam
         type="button"
         onClick={() => {
           const last = stops[stops.length - 1];
-          commit([...stops, { stop: 1, color: last?.color ?? '#ffffff' }]);
+          commit([...stops, { stop: 1, color: last?.color ?? "#ffffff" }]);
         }}
         style={{
-          alignSelf: 'flex-start',
-          border: '1px solid rgba(255, 255, 255, 0.14)',
+          alignSelf: "flex-start",
+          border: "1px solid rgba(255, 255, 255, 0.14)",
           borderRadius: 4,
-          background: 'transparent',
-          color: 'rgba(255, 255, 255, 0.7)',
+          background: "transparent",
+          color: "rgba(255, 255, 255, 0.7)",
           fontSize: FONT.sizeLabel,
           fontFamily: FONT.family,
-          padding: '2px 8px',
-          cursor: 'pointer',
+          padding: "2px 8px",
+          cursor: "pointer",
         }}
       >
         + add stop
@@ -558,19 +634,21 @@ interface EasingValue {
 
 function isEasingValue(v: unknown): v is EasingValue {
   return (
-    typeof v === 'object' &&
+    typeof v === "object" &&
     v !== null &&
-    ['x1', 'y1', 'x2', 'y2'].every((k) => typeof (v as Record<string, unknown>)[k] === 'number')
+    ["x1", "y1", "x2", "y2"].every(
+      (k) => typeof (v as Record<string, unknown>)[k] === "number",
+    )
   );
 }
 
 const EASING_PRESETS: { name: string; value: EasingValue }[] = [
-  { name: 'linear', value: { x1: 0, y1: 0, x2: 1, y2: 1 } },
-  { name: 'ease', value: { x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 } },
-  { name: 'in', value: { x1: 0.42, y1: 0, x2: 1, y2: 1 } },
-  { name: 'out', value: { x1: 0, y1: 0, x2: 0.58, y2: 1 } },
-  { name: 'in-out', value: { x1: 0.42, y1: 0, x2: 0.58, y2: 1 } },
-  { name: 'back', value: { x1: 0.34, y1: 1.56, x2: 0.64, y2: 1 } },
+  { name: "linear", value: { x1: 0, y1: 0, x2: 1, y2: 1 } },
+  { name: "ease", value: { x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 } },
+  { name: "in", value: { x1: 0.42, y1: 0, x2: 1, y2: 1 } },
+  { name: "out", value: { x1: 0, y1: 0, x2: 0.58, y2: 1 } },
+  { name: "in-out", value: { x1: 0.42, y1: 0, x2: 0.58, y2: 1 } },
+  { name: "back", value: { x1: 0.34, y1: 1.56, x2: 0.64, y2: 1 } },
 ];
 
 const CURVE_H = 120;
@@ -579,17 +657,29 @@ const CURVE_H = 120;
 const CURVE_Y_MIN = -0.6;
 const CURVE_Y_MAX = 1.6;
 
-function curveToPx(x: number, y: number, w: number): { px: number; py: number } {
+function curveToPx(
+  x: number,
+  y: number,
+  w: number,
+): { px: number; py: number } {
   return {
     px: x * w,
     py: CURVE_H - ((y - CURVE_Y_MIN) / (CURVE_Y_MAX - CURVE_Y_MIN)) * CURVE_H,
   };
 }
 
-function pxToCurve(px: number, py: number, w: number): { x: number; y: number } {
+function pxToCurve(
+  px: number,
+  py: number,
+  w: number,
+): { x: number; y: number } {
   const x = Math.min(1, Math.max(0, px / w));
-  const y = CURVE_Y_MIN + ((CURVE_H - py) / CURVE_H) * (CURVE_Y_MAX - CURVE_Y_MIN);
-  return { x: Math.round(x * 100) / 100, y: Math.round(Math.min(CURVE_Y_MAX, Math.max(CURVE_Y_MIN, y)) * 100) / 100 };
+  const y =
+    CURVE_Y_MIN + ((CURVE_H - py) / CURVE_H) * (CURVE_Y_MAX - CURVE_Y_MIN);
+  return {
+    x: Math.round(x * 100) / 100,
+    y: Math.round(Math.min(CURVE_Y_MAX, Math.max(CURVE_Y_MIN, y)) * 100) / 100,
+  };
 }
 
 // Mini preset thumbnail geometry. Each tile normalizes its own y-range so
@@ -622,7 +712,13 @@ function tileMapper(
   });
 }
 
-function EasingCurveRow({ effectId, entry }: { effectId: string; entry: PanelParamEntry }): React.JSX.Element | null {
+function EasingCurveRow({
+  effectId,
+  entry,
+}: {
+  effectId: string;
+  entry: PanelParamEntry;
+}): React.JSX.Element | null {
   const session = useOverlaySession();
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -654,23 +750,32 @@ function EasingCurveRow({ effectId, entry }: { effectId: string; entry: PanelPar
   const p1 = curveToPx(curve.x1, curve.y1, width);
   const p2 = curveToPx(curve.x2, curve.y2, width);
 
-  const dragHandle = (which: 1 | 2) => (event: React.PointerEvent<SVGCircleElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const svg = svgRef.current;
-    if (svg === null) return;
-    const move = (ev: PointerEvent): void => {
-      const rect = svg.getBoundingClientRect();
-      const { x, y } = pxToCurve(ev.clientX - rect.left, ev.clientY - rect.top, rect.width);
-      commit(which === 1 ? { ...curveRef.current, x1: x, y1: y } : { ...curveRef.current, x2: x, y2: y });
+  const dragHandle =
+    (which: 1 | 2) => (event: React.PointerEvent<SVGCircleElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const svg = svgRef.current;
+      if (svg === null) return;
+      const move = (ev: PointerEvent): void => {
+        const rect = svg.getBoundingClientRect();
+        const { x, y } = pxToCurve(
+          ev.clientX - rect.left,
+          ev.clientY - rect.top,
+          rect.width,
+        );
+        commit(
+          which === 1
+            ? { ...curveRef.current, x1: x, y1: y }
+            : { ...curveRef.current, x2: x, y2: y },
+        );
+      };
+      const up = (): void => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     };
-    const up = (): void => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
 
   const matchesPreset = (preset: EasingValue): boolean =>
     Math.abs(curve.x1 - preset.x1) < 0.01 &&
@@ -679,25 +784,54 @@ function EasingCurveRow({ effectId, entry }: { effectId: string; entry: PanelPar
     Math.abs(curve.y2 - preset.y2) < 0.01;
 
   return (
-    <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div
+      ref={wrapRef}
+      style={{ display: "flex", flexDirection: "column", gap: 6 }}
+    >
       <svg
         ref={svgRef}
         width={width}
         height={CURVE_H}
         style={{
-          background: 'rgba(255, 255, 255, 0.04)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          background: "rgba(255, 255, 255, 0.04)",
+          border: "1px solid rgba(255, 255, 255, 0.1)",
           borderRadius: 8,
-          overflow: 'visible',
-          touchAction: 'none',
+          overflow: "visible",
+          touchAction: "none",
         }}
       >
         {/* value 0 / value 1 gridlines */}
-        <line x1={0} y1={curveToPx(0, 0, width).py} x2={width} y2={curveToPx(0, 0, width).py} stroke="rgba(255,255,255,0.14)" strokeDasharray="3 3" />
-        <line x1={0} y1={curveToPx(0, 1, width).py} x2={width} y2={curveToPx(0, 1, width).py} stroke="rgba(255,255,255,0.14)" strokeDasharray="3 3" />
+        <line
+          x1={0}
+          y1={curveToPx(0, 0, width).py}
+          x2={width}
+          y2={curveToPx(0, 0, width).py}
+          stroke="rgba(255,255,255,0.14)"
+          strokeDasharray="3 3"
+        />
+        <line
+          x1={0}
+          y1={curveToPx(0, 1, width).py}
+          x2={width}
+          y2={curveToPx(0, 1, width).py}
+          stroke="rgba(255,255,255,0.14)"
+          strokeDasharray="3 3"
+        />
         {/* handle stems */}
-        <line x1={start.px} y1={start.py} x2={p1.px} y2={p1.py} stroke="rgba(255,255,255,0.35)" />
-        <line x1={end.px} y1={end.py} x2={p2.px} y2={p2.py} stroke="rgba(255,255,255,0.35)" />
+        <line
+          x1={start.px}
+          y1={start.py}
+          x2={p1.px}
+          y2={p1.py}
+          stroke="rgba(255,255,255,0.35)"
+        />
+        <line
+          x1={end.px}
+          y1={end.py}
+          x2={p2.px}
+          y2={p2.py}
+          stroke="rgba(255,255,255,0.35)"
+        />
         {/* the curve */}
         <path
           d={`M ${String(start.px)} ${String(start.py)} C ${String(p1.px)} ${String(p1.py)}, ${String(p2.px)} ${String(p2.py)}, ${String(end.px)} ${String(end.py)}`}
@@ -706,15 +840,31 @@ function EasingCurveRow({ effectId, entry }: { effectId: string; entry: PanelPar
           strokeWidth={1.8}
         />
         {/* draggable control points */}
-        {[{ p: p1, which: 1 as const }, { p: p2, which: 2 as const }].map(({ p, which }) => (
+        {[
+          { p: p1, which: 1 as const },
+          { p: p2, which: 2 as const },
+        ].map(({ p, which }) => (
           <g key={which}>
-            <circle cx={p.px} cy={p.py} r={12} fill="rgba(255,255,255,0.001)" style={{ cursor: 'grab' }} onPointerDown={dragHandle(which)} />
-            <circle cx={p.px} cy={p.py} r={4.5} fill={COLORS.accent} pointerEvents="none" />
+            <circle
+              cx={p.px}
+              cy={p.py}
+              r={12}
+              fill="rgba(255,255,255,0.001)"
+              style={{ cursor: "grab" }}
+              onPointerDown={dragHandle(which)}
+            />
+            <circle
+              cx={p.px}
+              cy={p.py}
+              r={4.5}
+              fill={COLORS.accent}
+              pointerEvents="none"
+            />
           </g>
         ))}
       </svg>
       {/* Preset curves as mini-graph tiles: pick a curve by seeing it. */}
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
         {EASING_PRESETS.map((preset) => {
           const tp = tileMapper(preset.value);
           const t0 = tp(0, 0);
@@ -729,16 +879,16 @@ function EasingCurveRow({ effectId, entry }: { effectId: string; entry: PanelPar
               aria-pressed={active}
               onClick={() => commit(preset.value)}
               style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
                 gap: 1,
-                padding: '3px 4px 2px',
-                border: `1px solid ${active ? 'rgba(255, 255, 255, 0.5)' : GLASS.hairline}`,
+                padding: "3px 4px 2px",
+                border: `1px solid ${active ? "rgba(255, 255, 255, 0.5)" : GLASS.hairline}`,
                 borderRadius: 6,
                 background: active ? GLASS.fillActive : GLASS.fill,
-                cursor: 'pointer',
-                transition: 'background 120ms ease, border-color 120ms ease',
+                cursor: "pointer",
+                transition: "background 120ms ease, border-color 120ms ease",
               }}
             >
               <svg width={TILE_W} height={TILE_H}>
@@ -754,7 +904,9 @@ function EasingCurveRow({ effectId, entry }: { effectId: string; entry: PanelPar
                 <path
                   d={`M ${String(t0.px)} ${String(t0.py)} C ${String(t1.px)} ${String(t1.py)}, ${String(t2.px)} ${String(t2.py)}, ${String(t3.px)} ${String(t3.py)}`}
                   fill="none"
-                  stroke={active ? 'rgb(255, 255, 255)' : 'rgba(255, 255, 255, 0.68)'}
+                  stroke={
+                    active ? "rgb(255, 255, 255)" : "rgba(255, 255, 255, 0.68)"
+                  }
                   strokeWidth={1.7}
                   strokeLinecap="round"
                 />
@@ -763,7 +915,9 @@ function EasingCurveRow({ effectId, entry }: { effectId: string; entry: PanelPar
                 style={{
                   fontSize: 8,
                   fontFamily: FONT.family,
-                  color: active ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.55)',
+                  color: active
+                    ? "rgba(255, 255, 255, 0.95)"
+                    : "rgba(255, 255, 255, 0.55)",
                   letterSpacing: 0.03,
                 }}
               >
@@ -787,18 +941,22 @@ function isPathValue(v: unknown): v is PathPoint[] {
     Array.isArray(v) &&
     v.every(
       (p) =>
-        typeof p === 'object' &&
+        typeof p === "object" &&
         p !== null &&
-        typeof (p as PathPoint).x === 'number' &&
-        typeof (p as PathPoint).y === 'number',
+        typeof (p as PathPoint).x === "number" &&
+        typeof (p as PathPoint).y === "number",
     )
   );
 }
 
-function PathRows({ effectId, entry }: { effectId: string; entry: PanelParamEntry }): React.JSX.Element | null {
+function PathRows({
+  effectId,
+  entry,
+}: {
+  effectId: string;
+  entry: PanelParamEntry;
+}): React.JSX.Element | null {
   const session = useOverlaySession();
-  // The hint line doubles as the context-menu anchor (there is no label row
-  // to right-click — path edits live on the canvas).
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   if (!isPathValue(entry.liveValue)) return null;
   const points = entry.liveValue;
@@ -809,41 +967,54 @@ function PathRows({ effectId, entry }: { effectId: string; entry: PanelParamEntr
     if (cur === undefined) return;
     const dx = (patch.x ?? cur.x) - cur.x;
     const dy = (patch.y ?? cur.y) - cur.y;
-    session.manipulate(effectId, entry.paramKey, translateAnchor(points, index, dx, dy));
+    session.manipulate(
+      effectId,
+      entry.paramKey,
+      translateAnchor(points, index, dx, dy),
+    );
   };
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setMenu({ x: e.clientX, y: e.clientY });
-        }}
+    <div
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
+      style={{ display: "flex", flexDirection: "column", gap: 6 }}
+    >
+      <div
         style={{
-          fontSize: FONT.sizeLabel,
-          color: 'rgba(255, 255, 255, 0.45)',
-          fontFamily: FONT.family,
-          cursor: 'context-menu',
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "6px 12px",
         }}
       >
-        Edit the path on the canvas. Fields set exact anchor positions.
-      </span>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
         {points.map((point, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div
+            key={i}
+            style={{ display: "flex", alignItems: "center", gap: 6 }}
+          >
             <span
               style={{
                 width: 20,
                 flexShrink: 0,
                 fontSize: FONT.sizeLabel,
-                color: 'rgba(255, 255, 255, 0.5)',
+                color: "rgba(255, 255, 255, 0.5)",
                 fontFamily: FONT.mono,
               }}
             >
               P{i + 1}
             </span>
-            <PathAxisInput label={`P${String(i + 1)} x`} value={point.x} onChange={(x) => setPoint(i, { x })} />
-            <PathAxisInput label={`P${String(i + 1)} y`} value={point.y} onChange={(y) => setPoint(i, { y })} />
+            <PathAxisInput
+              label={`P${String(i + 1)} x`}
+              value={point.x}
+              onChange={(x) => setPoint(i, { x })}
+            />
+            <PathAxisInput
+              label={`P${String(i + 1)} y`}
+              value={point.y}
+              onChange={(y) => setPoint(i, { y })}
+            />
           </div>
         ))}
       </div>
@@ -890,12 +1061,12 @@ function PathAxisInput({
       onChange={(e) => setDraft(e.target.value)}
       onBlur={(e) => commit(e.target.value)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') commit((e.target as HTMLInputElement).value);
-        if (e.key === 'Escape') setDraft(null);
+        if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+        if (e.key === "Escape") setDraft(null);
       }}
       style={{
         ...numberInputStyle,
-        width: '100%',
+        width: "100%",
         minWidth: 0,
         flex: 1,
         borderRadius: 6,

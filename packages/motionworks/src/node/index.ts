@@ -1,4 +1,4 @@
-export { SCHEMA_EMISSION_GUIDE } from './instructions.js';
+export { SCHEMA_EMISSION_GUIDE } from "./instructions.js";
 export {
   START_SENTINEL,
   END_SENTINEL,
@@ -14,12 +14,30 @@ export {
   writeInstructionFile,
   type InstructionFile,
   type StanzaScan,
-} from './claude-md.js';
-export { checkDrift, formatDriftWarning, type FileDriftStatus } from './drift.js';
-export { runInit, diffStanzas, type InitOptions, type InitOutcome } from './init.js';
-export { startDaemon, type DaemonOptions, type RunningDaemon } from './daemon.js';
-export { loadConfig, parsePort, type AgentSetting, type MotionWorksConfig } from './config.js';
-export { formatChanges, formatStatus, runAck } from './commands.js';
+} from "./claude-md.js";
+export {
+  checkDrift,
+  formatDriftWarning,
+  type FileDriftStatus,
+} from "./drift.js";
+export {
+  runInit,
+  diffStanzas,
+  type InitOptions,
+  type InitOutcome,
+} from "./init.js";
+export {
+  startDaemon,
+  type DaemonOptions,
+  type RunningDaemon,
+} from "./daemon.js";
+export {
+  loadConfig,
+  parsePort,
+  type AgentSetting,
+  type MotionWorksConfig,
+} from "./config.js";
+export { formatChanges, formatStatus, runAck } from "./commands.js";
 export {
   ackEntries,
   appendEntry,
@@ -28,7 +46,7 @@ export {
   updateEntry,
   withJournalLock,
   writeSelected,
-} from './journal.js';
-export { PACKAGE_VERSION } from './version.js';
-export { resolveOverlayBundle } from './overlay-asset.js';
-export { createStaticHandler } from './static-serve.js';
+} from "./journal.js";
+export { PACKAGE_VERSION } from "./version.js";
+export { resolveOverlayBundle } from "./overlay-asset.js";
+export { createStaticHandler } from "./static-serve.js";

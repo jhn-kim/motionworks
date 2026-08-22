@@ -51,27 +51,50 @@ export interface ToolboxProps {
   insertAfter?: { id: string; node: React.ReactNode } | null;
   // Flyout anchored above the tool with the given id (the family drawer).
   flyout?: { anchorId: string; node: React.ReactNode } | null;
+  // A transient, non-interactive message anchored beside a tool. Unlike a
+  // panel it never participates in chip sizing.
+  sidecar?: { anchorId: string; node: React.ReactNode } | null;
 }
 
 // The chip is pinned to bottom-center. It starts at the launcher square's
 // size so opening reads as the launcher morphing into the toolbar.
 const BOTTOM_MARGIN = 16;
 const CHIP_SEED = 46;
+const TOOLBOX_MAX_WIDTH = 720;
 // Height budget: panels taller than this scroll internally so the chip can
 // never eat the canvas.
 const PANELS_MAX_HEIGHT = "40vh";
 
-// Icon click animation, keyed by tool id. Currently unused — the spin fit
-// the old circular-arrow replay glyph, not the play triangle — but the
-// mechanism stays for future one-shot icon feedback.
-const ICON_CLICK_ANIMATION: Record<string, string> = {};
+// One-shot icon feedback for the in-time verbs. A soft press-and-release
+// that stays legible on rapid, repeated presses without dominating the
+// peripheral view.
+const ICON_CLICK_ANIMATION: Record<string, string> = {
+  apply: "nudge",
+  garbage: "nudge",
+  replay: "nudge",
+  agent: "nudge",
+  compare: "nudge",
+};
+
+// These actions can remove or disable their own button immediately. Give
+// the browser one short beat to paint the click feedback before executing
+// them; Compare remains immediate because its button persists.
+const TRANSIENT_ACTION_DELAY_MS = 155;
+const TRANSIENT_ACTION_IDS = new Set(["apply", "garbage", "replay", "agent"]);
 
 const ICON_ANIMATION_CSS = `
 @keyframes ms-ico-spin { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
 @keyframes ms-ico-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+@keyframes ms-ico-nudge {
+  0% { transform: scale(1); }
+  35% { transform: scale(0.92); }
+  70% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
 .ms-ico { display: grid; place-items: center; }
 .ms-ico-spin { animation: ms-ico-spin 380ms cubic-bezier(0.35, 0, 0.25, 1); }
 .ms-ico-pulse { animation: ms-ico-pulse 800ms ease-in-out infinite; }
+.ms-ico-nudge { animation: ms-ico-nudge 220ms cubic-bezier(0.2, 0.82, 0.25, 1); }
 /* One unified settle-breath as the open morph lands: transform scales the
    whole box as a rigid shape, so both edges spring together — the fluid
    overshoot without two animated properties interfering. */
@@ -79,6 +102,12 @@ const ICON_ANIMATION_CSS = `
   0% { transform: scale(1); }
   45% { transform: scale(1.013); }
   100% { transform: scale(1); }
+}
+@keyframes ms-agent-quip {
+  0% { opacity: 0; transform: translateX(-8px) scale(0.92); }
+  12% { opacity: 1; transform: translateX(0) scale(1); }
+  82% { opacity: 1; transform: translateX(0) scale(1); }
+  100% { opacity: 0; transform: translateX(6px) scale(0.98); }
 }
 `;
 
@@ -93,6 +122,7 @@ export function Toolbox({
   panels,
   insertAfter,
   flyout,
+  sidecar,
   closing = false,
 }: ToolboxProps): React.JSX.Element {
   // Content-driven size changes (tools appearing, panels expanding) can't be
@@ -101,6 +131,7 @@ export function Toolbox({
   // with the launcher square's size makes the first measure animate, i.e.
   // the launcher visually morphs into the toolbar.
   const contentRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({
     w: CHIP_SEED,
     h: CHIP_SEED,
@@ -119,14 +150,23 @@ export function Toolbox({
   }, []);
   useLayoutEffect(() => {
     const el = contentRef.current;
-    if (el === null) return;
+    const bar = barRef.current;
+    if (el === null || bar === null) return;
     const measure = (): void => {
       const rect = el.getBoundingClientRect();
-      setSize({ w: rect.width, h: rect.height });
+      // Panels are passengers: only the icon row defines the chip width.
+      // The content adds 6px padding on each side around that row.
+      const width = bar.getBoundingClientRect().width + 12;
+      setSize((current) =>
+        current.w === width && current.h === rect.height
+          ? current
+          : { w: width, h: rect.height },
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
+    observer.observe(bar);
     return () => observer.disconnect();
   }, []);
 
@@ -206,8 +246,16 @@ export function Toolbox({
       clearTimeout(timer);
     };
   }, [snap]);
-  const [hoveredTool, setHoveredTool] = useState<Tool | null>(null);
+  // Only the id is stored; the current Tool is re-derived from `tools` each
+  // render so labels/hints track live prop changes (e.g. Compare toggling
+  // between "Compare with original" and "Showing original") without waiting
+  // for the pointer to move.
+  const [hoveredToolId, setHoveredToolId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const hoveredTool =
+    hoveredToolId !== null
+      ? (tools.find((t) => t.id === hoveredToolId) ?? null)
+      : null;
 
   // The first ~half second after mount is the "opening" morph: it grows
   // symmetrically from the launcher square at center (left animates in step
@@ -256,17 +304,60 @@ export function Toolbox({
     // Size changes shuffle button positions; re-anchor after they settle.
   }, [flyout, tools.length, size]);
 
+  const [sidecarPos, setSidecarPos] = useState<{
+    left: number;
+    right: number;
+    centerY: number;
+  } | null>(null);
+  useLayoutEffect(() => {
+    if (sidecar == null) {
+      setSidecarPos(null);
+      return;
+    }
+    let raf = 0;
+    const measure = (): void => {
+      const button = buttonsRef.current.get(sidecar.anchorId);
+      if (button !== undefined) {
+        const rect = button.getBoundingClientRect();
+        setSidecarPos((current) => {
+          const next = {
+            left: rect.left,
+            right: rect.right,
+            centerY: rect.top + rect.height / 2,
+          };
+          return current?.left === next.left &&
+            current.right === next.right &&
+            current.centerY === next.centerY
+            ? current
+            : next;
+        });
+      }
+      raf = requestAnimationFrame(measure);
+    };
+    measure();
+    return () => cancelAnimationFrame(raf);
+  }, [sidecar]);
+
   const actionTools = tools.filter((t) => t.kind === "action");
   const typeTools = tools.filter((t) => t.kind === "type");
   const verbTools = tools.filter((t) => t.kind === "verb");
+  const logoTool = actionTools.find((tool) => tool.id === "logo");
+  const maxShellWidth = Math.max(
+    CHIP_SEED + 2,
+    Math.min(TOOLBOX_MAX_WIDTH + 2, vw - BOTTOM_MARGIN * 2),
+  );
+  const shellWidth = closing
+    ? CHIP_SEED + 2
+    : Math.min(size.w + 2, maxShellWidth);
+  const contentMaxWidth = maxShellWidth - 2;
 
   const handleToolEnter = (tool: Tool): void => {
-    setHoveredTool(tool);
+    setHoveredToolId(tool.id);
   };
   const handleToolLeave = (tool: Tool): void => {
     // Clear per-button: moving from a tool into the panel area (still inside
     // the chip) must drop the label immediately.
-    setHoveredTool((current) => (current === tool ? null : current));
+    setHoveredToolId((current) => (current === tool.id ? null : current));
     setCursor(null);
   };
   const handleToolMove = (event: React.PointerEvent): void => {
@@ -297,13 +388,13 @@ export function Toolbox({
 
   return (
     <>
-      <style>{ICON_ANIMATION_CSS}</style>
+      <style data-motionworks-overlay-style="">{ICON_ANIMATION_CSS}</style>
       <div
         ref={chipRef}
         role="toolbar"
         aria-orientation="horizontal"
         onPointerLeave={() => {
-          setHoveredTool(null);
+          setHoveredToolId(null);
           setCursor(null);
         }}
         style={{
@@ -322,17 +413,17 @@ export function Toolbox({
           ...(dragPos !== null
             ? { left: dragPos.x, top: dragPos.y }
             : snap !== null
-              ? { left: (vw - (size.w + 2)) / 2, top: snap.top }
+              ? { left: (vw - shellWidth) / 2, top: snap.top }
               : {
                   left: closing
                     ? vw - (CHIP_SEED + 2) - BOTTOM_MARGIN
-                    : (vw - (size.w + 2)) / 2,
+                    : (vw - shellWidth) / 2,
                   ...(dock === "bottom"
                     ? { bottom: BOTTOM_MARGIN }
                     : { top: BOTTOM_MARGIN }),
                 }),
           overflow: "hidden",
-          width: closing ? CHIP_SEED + 2 : size.w + 2,
+          width: shellWidth,
           height: closing ? CHIP_SEED + 2 : size.h + 2,
           // Gooey: a longer, gently overshooting curve so growth reads as a
           // fluid blob stretching, never a snap. Open/close morphs move left
@@ -380,7 +471,7 @@ export function Toolbox({
             gap: 6,
             alignItems: "stretch",
             padding: 6,
-            width: "max-content",
+            width: Math.min(size.w, contentMaxWidth),
             boxSizing: "border-box",
             opacity: closing ? 0 : 1,
             transition: "opacity 140ms ease",
@@ -391,6 +482,9 @@ export function Toolbox({
               style={{
                 maxHeight: PANELS_MAX_HEIGHT,
                 overflowY: "auto",
+                overflowX: "hidden",
+                maxWidth: "100%",
+                minWidth: 0,
                 scrollbarWidth: "thin",
                 scrollbarColor: GLASS.scrollbarColor,
               }}
@@ -399,6 +493,7 @@ export function Toolbox({
             </div>
           ) : null}
           <div
+            ref={barRef}
             onPointerDown={beginBarDrag}
             onClickCapture={(e) => {
               if (suppressClickRef.current) {
@@ -412,6 +507,7 @@ export function Toolbox({
               flexDirection: "row",
               alignItems: "center",
               gap: 2,
+              width: "max-content",
               cursor: "grab",
               touchAction: "none",
             }}
@@ -425,6 +521,25 @@ export function Toolbox({
             {verbTools.map(renderTool)}
           </div>
         </div>
+        {closing && logoTool !== undefined ? (
+          <div
+            data-motionworks-closing-logo=""
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: 6,
+              ...(dock === "bottom" ? { bottom: 6 } : { top: 6 }),
+              width: 34,
+              height: 34,
+              display: "grid",
+              placeItems: "center",
+              color: "rgba(255, 255, 255, 0.95)",
+              pointerEvents: "none",
+            }}
+          >
+            {logoTool.icon}
+          </div>
+        ) : null}
       </div>
       {flyout != null && flyoutPos !== null ? (
         <div
@@ -439,6 +554,26 @@ export function Toolbox({
           }}
         >
           {flyout.node}
+        </div>
+      ) : null}
+      {sidecar != null && sidecarPos !== null ? (
+        <div
+          style={{
+            position: "fixed",
+            left:
+              sidecarPos.right + 230 < vw
+                ? sidecarPos.right + 10
+                : sidecarPos.left - 10,
+            top: sidecarPos.centerY,
+            transform:
+              sidecarPos.right + 230 < vw
+                ? "translateY(-50%)"
+                : "translate(-100%, -50%)",
+            pointerEvents: "none",
+            zIndex: 9999,
+          }}
+        >
+          {sidecar.node}
         </div>
       ) : null}
       {hoveredTool !== null && cursor !== null ? (
@@ -496,9 +631,15 @@ function ToolButton({
   // Incremented per click; used as the icon wrapper's key so the CSS
   // animation retriggers on every press.
   const [clickCount, setClickCount] = useState(0);
+  const pendingClickRef = useRef(false);
   const clickAnimation = ICON_CLICK_ANIMATION[tool.id];
   const disabled = tool.disabled === true;
-  const background = active
+  // A result can remain semantically selected while its action becomes
+  // unavailable (Apply's brief completed state is the common case). Never
+  // render that combination as a dimmed active tile: inactive verbs are a
+  // grey icon on transparent glass.
+  const visuallyActive = active && !disabled;
+  const background = visuallyActive
     ? GLASS.fillActive
     : hover && !disabled
       ? GLASS.fillHover
@@ -507,7 +648,7 @@ function ToolButton({
     !disabled && tool.tint !== undefined
       ? tool.tint
       : "rgba(255, 255, 255, 0.78)";
-  const color = active
+  const color = visuallyActive
     ? (tool.tint ?? "rgb(255, 255, 255)")
     : hover && !disabled
       ? (tool.hoverColor ?? tool.tint ?? "rgba(255, 255, 255, 0.98)")
@@ -522,8 +663,17 @@ function ToolButton({
         tool.onHoldStart !== undefined
           ? undefined
           : () => {
+              if (pendingClickRef.current) return;
               if (clickAnimation !== undefined) setClickCount((c) => c + 1);
-              onClick();
+              if (TRANSIENT_ACTION_IDS.has(tool.id)) {
+                pendingClickRef.current = true;
+                window.setTimeout(() => {
+                  pendingClickRef.current = false;
+                  onClick();
+                }, TRANSIENT_ACTION_DELAY_MS);
+              } else {
+                onClick();
+              }
             }
       }
       onPointerDown={tool.onHoldStart}
@@ -552,13 +702,20 @@ function ToolButton({
         cursor: disabled ? "default" : "pointer",
         opacity: !entered ? 0 : disabled ? 0.4 : 1,
         transform: entered ? "scale(1)" : "scale(0.7)",
-        transition:
-          "background 140ms ease, color 140ms ease, opacity 260ms ease, transform 320ms cubic-bezier(0.32, 1.2, 0.35, 1)",
+        transition: disabled
+          ? "color 140ms ease, opacity 260ms ease, transform 320ms cubic-bezier(0.32, 1.2, 0.35, 1)"
+          : "background 140ms ease, color 140ms ease, opacity 260ms ease, transform 320ms cubic-bezier(0.32, 1.2, 0.35, 1)",
       }}
     >
       <span
         key={clickCount}
-        className={tool.pulse ? 'ms-ico ms-ico-pulse' : clickCount > 0 && clickAnimation !== undefined ? `ms-ico ms-ico-${clickAnimation}` : 'ms-ico'}
+        className={
+          tool.pulse
+            ? "ms-ico ms-ico-pulse"
+            : clickCount > 0 && clickAnimation !== undefined
+              ? `ms-ico ms-ico-${clickAnimation}`
+              : "ms-ico"
+        }
       >
         {tool.icon}
       </span>
@@ -643,6 +800,14 @@ export const ICONS = {
   apply: (
     <svg {...iconProps} aria-hidden>
       <path d="M4 10.5l3.6 3.5L16 6" />
+    </svg>
+  ),
+  agent: (
+    <svg {...iconProps} aria-hidden>
+      <g transform="translate(1 1) scale(0.9)">
+        <rect x="7" y="7" width="10" height="10" rx="1.5" />
+        <path d="M4.5 3 H11.5 A1.5 1.5 0 0 1 13 4.5 V7 H7 V13 H4.5 A1.5 1.5 0 0 1 3 11.5 V4.5 A1.5 1.5 0 0 1 4.5 3 Z" />
+      </g>
     </svg>
   ),
   garbage: (

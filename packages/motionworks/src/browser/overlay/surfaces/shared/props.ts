@@ -1,4 +1,4 @@
-import type { MotionWorksParam } from '../../../../shared/index.js';
+import type { MotionWorksParam } from "../../../../shared/index.js";
 
 // Every surface receives the same shape. Individual surfaces narrow
 // `liveValue` (and sometimes `param.value`) to what their type contract

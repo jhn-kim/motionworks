@@ -69,16 +69,21 @@ export class DiffStore {
     value: unknown,
   ): void {
     let paramMap = this.diffs.get(effectId);
-    if (paramMap === undefined) {
-      paramMap = new Map();
-      this.diffs.set(effectId, paramMap);
-    }
-    const existing = paramMap.get(param);
+    const existing = paramMap?.get(param);
     if (existing !== undefined) {
       if (deepEqual(existing.to, value)) return;
+      if (deepEqual(existing.from, value)) {
+        this.clearParam(effectId, param);
+        return;
+      }
+      paramMap ??= new Map();
       paramMap.set(param, { from: existing.from, to: value });
     } else {
       if (deepEqual(baseline, value)) return;
+      if (paramMap === undefined) {
+        paramMap = new Map();
+        this.diffs.set(effectId, paramMap);
+      }
       paramMap.set(param, { from: baseline, to: value });
     }
     this.notify();

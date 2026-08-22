@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from "react";
 
-import { getBridge } from '../../bridge.js';
-import { useOverlaySession } from '../context.js';
-import { COLORS, FONT, PANEL, STAGGER_SURFACE, STROKE } from '../theme.js';
-import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
-import { useNodeRect } from './shared/hooks.js';
-import type { SurfaceProps } from './shared/props.js';
+import { getBridge } from "../../bridge.js";
+import { useOverlaySession } from "../context.js";
+import { COLORS, FONT, PANEL, STAGGER_SURFACE, STROKE } from "../theme.js";
+import { NumericEditor, SurfaceContextMenu } from "./shared/context-menu.js";
+import { useNodeRect } from "./shared/hooks.js";
+import type { SurfaceProps } from "./shared/props.js";
 
 // When the designer drags the gap between two adjacent ghosts, scale the
 // delays of every subsequent ghost by the ratio of new/old gap.
@@ -64,9 +64,9 @@ export function StaggerSurface({
         const staggerParam = e.params[paramKey];
         const diff = session.diffs.getDiff(e.id)[paramKey];
         const delay =
-          diff !== undefined && typeof diff.to === 'number'
+          diff !== undefined && typeof diff.to === "number"
             ? diff.to
-            : typeof staggerParam?.value === 'number'
+            : typeof staggerParam?.value === "number"
               ? staggerParam.value
               : 0;
         return { id: e.id, delay, node: getBridge().getNode(e.id) ?? null };
@@ -80,7 +80,11 @@ export function StaggerSurface({
       group.forEach((entry, i) => {
         const value = nextDelays[i];
         if (value !== undefined) {
-          session.manipulate(entry.id, paramKey, Math.max(STAGGER_SURFACE.minDelayMs, Math.round(value)));
+          session.manipulate(
+            entry.id,
+            paramKey,
+            Math.max(STAGGER_SURFACE.minDelayMs, Math.round(value)),
+          );
         }
       });
     },
@@ -100,20 +104,23 @@ export function StaggerSurface({
         const dx = ev.clientX - startX;
         const dDelay = dx / STAGGER_SURFACE.pxPerMs;
         const nextDelays = [...initialDelays];
-        nextDelays[index] = Math.max(STAGGER_SURFACE.minDelayMs, startDelay + dDelay);
+        nextDelays[index] = Math.max(
+          STAGGER_SURFACE.minDelayMs,
+          startDelay + dDelay,
+        );
         commitDelays(nextDelays);
       };
       const up = (): void => {
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // pointer already released
         }
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [commitDelays, group],
   );
@@ -125,7 +132,8 @@ export function StaggerSurface({
       const target = event.currentTarget;
       target.setPointerCapture(event.pointerId);
       const initialDelays = group.map((g) => g.delay);
-      const currentGap = initialDelays[gapIndex + 1]! - initialDelays[gapIndex]!;
+      const currentGap =
+        initialDelays[gapIndex + 1]! - initialDelays[gapIndex]!;
       const startX = event.clientX;
       const move = (ev: PointerEvent): void => {
         const dx = ev.clientX - startX;
@@ -134,16 +142,16 @@ export function StaggerSurface({
         commitDelays(scaled);
       };
       const up = (): void => {
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // pointer already released
         }
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [commitDelays, group],
   );
@@ -152,7 +160,11 @@ export function StaggerSurface({
     (raw: string) => {
       const n = Number(raw);
       if (Number.isFinite(n)) {
-        session.manipulate(effectId, paramKey, Math.max(STAGGER_SURFACE.minDelayMs, Math.round(n)));
+        session.manipulate(
+          effectId,
+          paramKey,
+          Math.max(STAGGER_SURFACE.minDelayMs, Math.round(n)),
+        );
       }
       setEditing(false);
     },
@@ -165,7 +177,10 @@ export function StaggerSurface({
   const timelineY = rect.bottom + STAGGER_SURFACE.timelineMarginTop;
   const timelineLeft = rect.left;
   const totalDuration = Math.max(...group.map((g) => g.delay)) + 200;
-  const timelineWidth = Math.max(rect.width, totalDuration * STAGGER_SURFACE.pxPerMs);
+  const timelineWidth = Math.max(
+    rect.width,
+    totalDuration * STAGGER_SURFACE.pxPerMs,
+  );
 
   return (
     <>
@@ -180,7 +195,9 @@ export function StaggerSurface({
       />
       {group.map((entry, i) => {
         const x = timelineLeft + entry.delay * STAGGER_SURFACE.pxPerMs;
-        const y = timelineY + (STAGGER_SURFACE.timelineHeight - STAGGER_SURFACE.ghostHeight) / 2;
+        const y =
+          timelineY +
+          (STAGGER_SURFACE.timelineHeight - STAGGER_SURFACE.ghostHeight) / 2;
         const isSelf = entry.id === effectId;
         return (
           <g key={entry.id}>
@@ -194,7 +211,7 @@ export function StaggerSurface({
               stroke={isSelf ? COLORS.accent : COLORS.panelBorder}
               strokeWidth={STROKE.secondary}
               pointerEvents="all"
-              style={{ cursor: 'ew-resize' }}
+              style={{ cursor: "ew-resize" }}
               onPointerDown={startGhostDrag(i)}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -229,7 +246,9 @@ export function StaggerSurface({
       })}
       {group.slice(0, -1).map((entry, i) => {
         const next = group[i + 1]!;
-        const gapMid = timelineLeft + ((entry.delay + next.delay) / 2) * STAGGER_SURFACE.pxPerMs;
+        const gapMid =
+          timelineLeft +
+          ((entry.delay + next.delay) / 2) * STAGGER_SURFACE.pxPerMs;
         const y = timelineY + STAGGER_SURFACE.timelineHeight / 2;
         return (
           <rect
@@ -240,7 +259,7 @@ export function StaggerSurface({
             height={24}
             fill="rgba(232, 121, 249, 0.001)"
             pointerEvents="all"
-            style={{ cursor: 'ew-resize' }}
+            style={{ cursor: "ew-resize" }}
             onPointerDown={startGapDrag(i)}
           />
         );
@@ -251,9 +270,14 @@ export function StaggerSurface({
           y={rect.top}
           width={160}
           height={30}
-          style={{ overflow: 'visible' }}
+          style={{ overflow: "visible" }}
         >
-          <NumericEditor initial={liveValue} step={1} onSubmit={submitEdit} onCancel={() => setEditing(false)} />
+          <NumericEditor
+            initial={liveValue}
+            step={1}
+            onSubmit={submitEdit}
+            onCancel={() => setEditing(false)}
+          />
         </foreignObject>
       )}
       {menu !== null && (
@@ -262,7 +286,7 @@ export function StaggerSurface({
           y={0}
           width={window.innerWidth}
           height={window.innerHeight}
-          style={{ overflow: 'visible', pointerEvents: 'none' }}
+          style={{ overflow: "visible", pointerEvents: "none" }}
         >
           <SurfaceContextMenu
             x={menu.x}
@@ -283,21 +307,22 @@ export function StaggerSurface({
         y={timelineY + STAGGER_SURFACE.timelineHeight + 20}
         width={timelineWidth + 100}
         height={20}
-        style={{ overflow: 'visible', pointerEvents: 'none' }}
+        style={{ overflow: "visible", pointerEvents: "none" }}
       >
         <div
           style={{
             fontFamily: FONT.family,
             fontSize: FONT.sizeSmall,
             color: COLORS.neutralInkMuted,
-            padding: '2px 6px',
+            padding: "2px 6px",
             background: COLORS.panelBg,
             border: `1px solid ${COLORS.panelBorder}`,
             borderRadius: PANEL.radius,
-            display: 'inline-block',
+            display: "inline-block",
           }}
         >
-          {String(group.length)} elements · drag a ghost to shift · drag a gap to scale
+          {String(group.length)} elements · drag a ghost to shift · drag a gap
+          to scale
         </div>
       </foreignObject>
     </>

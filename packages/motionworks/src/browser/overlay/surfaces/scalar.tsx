@@ -1,12 +1,12 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from "react";
 
-import type { MotionWorksParam } from '../../../shared/index.js';
+import type { MotionWorksParam } from "../../../shared/index.js";
 
-import { useOverlaySession } from '../context.js';
-import { COLORS, FONT, HANDLES, STROKE } from '../theme.js';
-import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
-import { useNodeRect } from './shared/hooks.js';
-import type { SurfaceProps } from './shared/props.js';
+import { useOverlaySession } from "../context.js";
+import { COLORS, FONT, HANDLES, STROKE } from "../theme.js";
+import { NumericEditor, SurfaceContextMenu } from "./shared/context-menu.js";
+import { useNodeRect } from "./shared/hooks.js";
+import type { SurfaceProps } from "./shared/props.js";
 
 const TRACK_HEIGHT = 140;
 const TRACK_WIDTH = 4;
@@ -36,7 +36,13 @@ export function scalarValueFromDrag(
 
 interface Props extends SurfaceProps<number> {}
 
-export function ScalarSurface({ effectId, paramKey, param, liveValue, node }: Props): React.JSX.Element | null {
+export function ScalarSurface({
+  effectId,
+  paramKey,
+  param,
+  liveValue,
+  node,
+}: Props): React.JSX.Element | null {
   const session = useOverlaySession();
   const rect = useNodeRect(node);
   const [dragging, setDragging] = useState(false);
@@ -81,16 +87,16 @@ export function ScalarSurface({ effectId, paramKey, param, liveValue, node }: Pr
       };
       const up = (): void => {
         setDragging(false);
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // pointer already released
         }
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [bounds, effectId, liveValue, paramKey, session],
   );
@@ -141,7 +147,7 @@ export function ScalarSurface({ effectId, paramKey, param, liveValue, node }: Pr
         fill="rgba(94, 234, 212, 0.001)"
         stroke="none"
         pointerEvents="all"
-        style={{ cursor: dragging ? 'grabbing' : 'grab' }}
+        style={{ cursor: dragging ? "grabbing" : "grab" }}
         onPointerDown={handlePointerDown}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -185,7 +191,13 @@ export function ScalarSurface({ effectId, paramKey, param, liveValue, node }: Pr
         pointerEvents="none"
       />
       {editing && (
-        <foreignObject x={trackX + 20} y={knobY - 14} width={140} height={30} style={{ overflow: 'visible' }}>
+        <foreignObject
+          x={trackX + 20}
+          y={knobY - 14}
+          width={140}
+          height={30}
+          style={{ overflow: "visible" }}
+        >
           <NumericEditor
             initial={liveValue}
             step={rangeStep(bounds)}
@@ -200,7 +212,7 @@ export function ScalarSurface({ effectId, paramKey, param, liveValue, node }: Pr
           y={0}
           width={window.innerWidth}
           height={window.innerHeight}
-          style={{ overflow: 'visible', pointerEvents: 'none' }}
+          style={{ overflow: "visible", pointerEvents: "none" }}
         >
           <SurfaceContextMenu
             x={menu.x}
@@ -234,9 +246,18 @@ function roundFor(value: number, bounds: { min: number; max: number }): number {
   return Math.round(value);
 }
 
-function formatScalar(value: number, param: MotionWorksParam, bounds: { min: number; max: number }): string {
-  const unit = param.unit ?? '';
+function formatScalar(
+  value: number,
+  param: MotionWorksParam,
+  bounds: { min: number; max: number },
+): string {
+  const unit = param.unit ?? "";
   const range = bounds.max - bounds.min;
-  const text = range <= 2 ? value.toFixed(2) : range <= 20 ? value.toFixed(1) : String(Math.round(value));
+  const text =
+    range <= 2
+      ? value.toFixed(2)
+      : range <= 20
+        ? value.toFixed(1)
+        : String(Math.round(value));
   return `${text}${unit}`;
 }

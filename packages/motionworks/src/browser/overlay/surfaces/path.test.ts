@@ -6,6 +6,7 @@ import {
   fromScreen,
   insertAnchorAt,
   materializeHandles,
+  pathCoordinateNode,
   pathContrastColor,
   removeAnchorAt,
   segmentControls,
@@ -66,6 +67,39 @@ describe("toScreen / fromScreen", () => {
   it("round-trips a point", () => {
     const p = { x: 55, y: 77 };
     expect(fromScreen(toScreen(p, RECT), RECT)).toEqual(p);
+  });
+});
+
+describe("pathCoordinateNode", () => {
+  it("uses the CSS offset-path consumer's containing block", () => {
+    const registered = document.createElement("div");
+    const host = document.createElement("div");
+    const runner = document.createElement("div");
+    registered.appendChild(host);
+    host.appendChild(runner);
+    document.body.appendChild(registered);
+    const path = [
+      { x: 0, y: 10 },
+      { x: 100, y: 20 },
+    ];
+    runner.style.setProperty("offset-path", 'path("M 0 10 L 100 20")');
+    Object.defineProperty(runner, "offsetParent", {
+      configurable: true,
+      value: host,
+    });
+
+    expect(pathCoordinateNode(registered, path)).toBe(host);
+    registered.remove();
+  });
+
+  it("falls back to the registered element for a non-CSS path", () => {
+    const registered = document.createElement("div");
+    expect(
+      pathCoordinateNode(registered, [
+        { x: 0, y: 0 },
+        { x: 10, y: 10 },
+      ]),
+    ).toBe(registered);
   });
 });
 

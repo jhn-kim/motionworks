@@ -1,162 +1,184 @@
 # MotionWorks — Overlay
 
-> **Maintenance rule:** This file covers `@motionworks/react`: installation, provider setup, element registration, the overlay's rendering model, and selection behavior. If the activation mechanism, rendering layers, or HMR strategy changes, edit the relevant section in place. Do not append. Changes require product owner confirmation.
+> **Maintenance rule:** This file covers overlay installation, mounting, element registration, rendering, selection, and reload resilience. If the activation mechanism, rendering layers, or stylesheet/HMR strategy changes, edit the relevant section in place. Do not append. Changes require product owner confirmation.
 
 ---
 
 ## What the Overlay Is
 
-The MotionWorks overlay is a set of React components that render on top of a running React application at `localhost`. It is not a browser extension. It is not a separate window. It is a layer mounted to `document.body` in its own React root, injected by the developer into their own project.
+The MotionWorks overlay renders over a locally running web page. It is not a browser extension or separate editor: selection and manipulation happen on the real DOM and real motion effect.
 
-Closed state: a small draggable launcher chip (the logo square) sits in a screen corner in development — there is no hotkey. Clicking it glides the chip to screen center, where it morphs into the toolkit bar. Clicking the logo again (or Escape) closes it. The launcher and toolkit can be dragged to dock at the top or bottom edge. While the toolkit is closed, only the launcher is visible and nothing intercepts the app.
+The UI is implemented in React and ships in two forms from the single `motionworks` package:
+
+- `motionworks/react` for a thin React hook/provider integration;
+- `motionworks.global.js`, a bundled IIFE that mounts on any HTML page and exposes helpers as `window.MotionWorks`.
+
+Closed state is a small draggable launcher chip in a screen corner. Clicking it moves and morphs it into the toolkit bar. Clicking the logo again or pressing Escape closes it. The launcher/toolkit can dock at the top or bottom edge. While closed, only the launcher is visible and nothing intercepts the app.
 
 ---
 
-## Installation
+## Installation and Mounting
 
 ```bash
-npm install -D @motionworks/react @motionworks/core
+npm install -D motionworks
+npx motionworks init
 ```
 
-`@motionworks/react` is a dev dependency. Use a build-time guard so nothing ships to production:
+Start `npx motionworks` from the project root alongside the application's development server.
+
+### React
+
+Mount `MotionWorksProvider` in its own development-only React root. The independent root keeps the overlay alive when application HMR remounts the product tree.
+
+Next.js App Router projects must mount from a client boot component rather than rendering the provider directly in a Server Component:
 
 ```tsx
-// src/main.tsx or src/index.tsx — the application entry point
-
-// Only import and mount MotionWorks in development
-if (process.env.NODE_ENV === 'development') {
-  import('@motionworks/react').then(({ MotionWorksProvider }) => {
-    const container = document.createElement('div');
-    container.id = 'motionworks-root';
-    document.body.appendChild(container);
-    ReactDOM.createRoot(container).render(<MotionWorksProvider />);
-  });
-}
-```
-
-**Why dynamic import?** Tree-shaking is not always reliable enough to guarantee zero production bundle impact when static imports are involved. Dynamic import + `NODE_ENV` guard is belt-and-suspenders — and the provider itself renders `null` outside development even if someone forgets the guard, lazily loading the overlay renderer chunk only in dev.
-
-**Next.js App Router:** `layout.tsx` is a server component, so it cannot import `MotionWorksProvider` and render it directly — the provider uses client-only hooks and will crash the server render. (`@motionworks/react` ships a `"use client"` directive so a stray import degrades to a client boundary instead of a hard 500, but that path does *not* survive HMR — always use the separate root below.) Wrap the mount in a client boot component and render *that* from the layout:
-
-```tsx
-// app/_components/motionworks-boot.tsx
 'use client';
 import { useEffect } from 'react';
 
-// Render <MotionWorksBoot /> once, high in the tree (e.g. app/layout.tsx).
 export function MotionWorksBoot(): null {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
-    const w = window as typeof window & { __motionworksRoot?: { unmount(): void } };
-    if (w.__motionworksRoot) return; // survive StrictMode double-invoke + HMR
+    const w = window as typeof window & { __motionworksRoot?: unknown };
+    if (w.__motionworksRoot) return;
     let disposed = false;
-    void Promise.all([import('@motionworks/react'), import('react-dom/client')]).then(
+    void Promise.all([import('motionworks/react'), import('react-dom/client')]).then(
       ([{ MotionWorksProvider }, { createRoot }]) => {
         if (disposed || w.__motionworksRoot) return;
-        const el = document.createElement('div');
-        el.id = 'motionworks-root';
-        document.body.appendChild(el);
-        const root = createRoot(el);
+        const element = document.createElement('div');
+        element.id = 'motionworks-root';
+        document.body.appendChild(element);
+        const root = createRoot(element);
         root.render(<MotionWorksProvider />);
         w.__motionworksRoot = root;
       },
     );
-    return () => {
-      disposed = true;
-    };
+    return () => { disposed = true; };
   }, []);
   return null;
 }
 ```
 
-The `MotionWorksProvider` mounts independently of the application's React root. This is intentional: MotionWorks must stay alive across HMR reloads that tear down and recreate the application's component tree.
+Vite, CRA, and other client-only React apps use the same development guard and separate-root mount in their client entry.
+
+### Any HTML page
+
+With another development server, add the daemon-served bundle before `</body>`:
+
+```html
+<script src="http://127.0.0.1:52340/motionworks.js"></script>
+```
+
+The script auto-mounts on `DOMContentLoaded`. Set `data-auto-mount="false"` to opt out and call `window.MotionWorks.mount()` manually. Its default daemon URL is the script URL's origin; a configured token is preserved from the script query.
+
+For static content:
+
+```bash
+npx motionworks serve .
+```
+
+The daemon serves the directory and injects `/motionworks.js` before `</body>` in HTML responses.
 
 ---
 
-## Provider Configuration
+## Configuration
 
 ```tsx
 <MotionWorksProvider
-  port={52340}            // WebSocket port for the MCP bridge. Default: 52340.
-  debug={false}           // Log WS client events. Default: false.
+  daemonUrl="http://127.0.0.1:52340"
+  debug={false}
 />
 ```
 
-All props are optional. Change `port` only if 52340 conflicts with another local service; also set the `MOTIONWORKS_PORT` env var so the MCP server uses the same port. The WS client reconnects with exponential backoff (250ms → 5s), so the CLI can be started before or after the app; on every reconnect the overlay re-announces all registrations.
+`daemonUrl` is the full HTTP base, including a token query when configured. If omitted, the provider uses `http://127.0.0.1:<port>`; `port` defaults to `52340` and remains available as a convenience prop. `debug` logs daemon-client activity.
+
+The client polls `/status` every five seconds for launcher health. While the toolkit is open it polls `/pending` every 1.5 seconds; otherwise pending polling uses the status cadence. Offline retries back off from one to ten seconds. Live manipulation never uses HTTP.
 
 ---
 
-## Registering an Effect
+## Registering Effects
 
-Effects are registered from within React components using the `useMotionWorks` hook. This is the agent's job — see `AGENT_INTEGRATION.md` for the instruction stack that makes agents emit these calls, and `SCHEMA.md` for the full registration API.
+### React hook
 
-`useMotionWorks` internally:
+`useMotionWorks(ref, schema)` attaches schema metadata to a real DOM node. Values come from computed CSS, not from registration. The hook:
 
-1. Captures the calling component's name during render (via React 19's owner internals; falls back to `'Anonymous'`) and derives a stable effect id: `ComponentName::SchemaName`.
-2. Registers with the **bridge** on mount — a module-scoped singleton stashed on `globalThis` (keyed by a shape version) so it survives HMR of the module itself. Registrations that arrive before the overlay's lazy chunk has loaded are queued and replayed in order.
-3. Unregisters on unmount. Several live instances of the same component share one effect id; the effect only truly unregisters when the last instance goes away, and `update()` fans out to every mounted instance.
-4. Re-registers when the schema **fingerprint** changes — the effect name plus each param's type and baseline value. This covers renames, added/removed params, and (crucially) an agent writeback that React Fast Refresh applies as a state-preserving update rather than a remount.
-5. Always dispatches `update()` through a ref to the latest closure, so re-renders don't churn the wire.
+1. slugifies the schema name and allocates `slug#n` by DOM order;
+2. registers the node and reads each CSS baseline on mount;
+3. unregisters that node on unmount;
+4. re-registers when name, parameter keys/types, or `var` bindings change;
+5. becomes a no-op outside development.
+
+Ids are never renumbered while live. Repeated component instances get distinct ids. Live manipulation fans out to same-slug siblings only when their baseline equals the selected instance's baseline.
+
+### DOM schemas
+
+The standalone overlay scans `data-motionworks` attributes and `<script type="application/motionworks+json">` selector maps. A MutationObserver registers added nodes, responds to attribute changes, and unregisters disconnected nodes.
+
+### CSS animation auto-detection
+
+While open, the overlay scans `document.getAnimations()` every 1.5 seconds. Running `CSSAnimation` instances receive selectable effects with duration, delay, and easing when decodable. An explicitly registered element owns the animation semantics of its subtree, so descendant CSS animations are not also auto-detected; register a descendant explicitly only when it is a genuinely independent effect. CSS transitions are not registered because their transient lifecycle would make the effect list flicker.
 
 ---
 
-## Overlay Rendering Architecture
+## Rendering Architecture
 
-The overlay root is a single fixed, full-viewport container (`data-motionworks-overlay`, `z-index: 9997`) with **`pointer-events: none` at all times — even while active**. The app underneath keeps receiving hover and move events so its animations play exactly as they do with MotionWorks off. Interactive overlay pieces (toolkit, panels, scrubber, menus) opt into pointer events individually; selection works through document-level capture listeners (below).
+The overlay root is one fixed full-viewport container (`data-motionworks-overlay`, `z-index: 9997`) with `pointer-events: none` at all times. The underlying app keeps receiving hover and move events. Interactive overlay controls opt into pointer events individually; selection uses capture listeners on `document`.
 
-What renders inside it:
+The root contains:
 
-- **The toolkit chip** — the frosted-glass toolbar and its expanding panels (family drawers, editors, layers list). All parameter editing lives here or in surfaces it mounts. See `MANIPULATION_SURFACES.md`.
-- **Selection highlights** — absolutely-positioned outlines with an effect-name label, for the hovered and the selected element.
-- **The activation reveal** — on every toolkit open, each registered element flashes its outline and effect name in a reading-order stagger, answering "what can I touch?" before fading out.
-- **The scrubber** — shown only for effects that declare `capabilities.scrub`.
-- **Scoped canvas + SVG layers** — a full-viewport 2D canvas (rAF clear-and-redraw via a draw-callback registry) and an SVG layer for interactive handles. These are **not mounted globally**: an editor that needs the element itself as the control surface mounts them scoped, from inside the toolkit. Today the path editor is the only one that does (canvas + SVG filtered to `path` params). The per-type on-element surface components live in `overlay/surfaces/` and render through this same mechanism.
-- **The cursor tool pill** — a frosted counter that follows the cursor while a parameter is armed, positioned imperatively (no render per pointermove).
+- **Toolkit chip** — launcher, verbs, family drawers, editors, and layers/navigation lists.
+- **Selection highlights** — positioned outlines and human-readable effect labels.
+- **Activation reveal** — a reading-order flash of every registered surface when the toolkit opens.
+- **Scrubber** — only for effects declaring `capabilities.scrub`.
+- **Scoped canvas and SVG layers** — mounted only by editing surfaces that need on-element drawing; currently the path editor.
+- **Cursor tool pill** — positioned imperatively beside the pointer while a parameter is armed.
 
-The overlay is strictly grayscale (`overlay/theme.ts` owns every color and pixel constant) so it never competes with the product's own colors.
+The overlay is grayscale. Shared color, spacing, timing, and interaction constants live in `browser/overlay/theme.ts`.
 
 ---
 
 ## Element Selection
 
-Only registered elements are selectable — those with `useMotionWorks` refs, plus auto-detected CSS animations while the overlay is open (see `SCHEMA.md`).
+Selectable nodes come from React hooks, DOM schemas, or CSS animation auto-detection. The `SelectionEngine` attaches capture-phase document listeners while the toolkit is open:
 
-The `SelectionEngine` attaches capture-phase listeners on `document` while the toolkit is open:
+- **Hover** uses `document.elementsFromPoint` and outlines the outermost registered ancestor under the pointer.
+- **Click** prevents the app's activation behavior and selects the registered node; clicking empty space deselects.
+- **Drill/double-click** selects the deepest registered node for nested effects. The Layers panel offers the discoverable equivalent.
+- **Synthetic events** are ignored so safe simulated Replay presses reach the app.
+- **Overlay UI** is excluded from application hit testing.
 
-- **Hover:** `pointermove` hit-tests via `document.elementsFromPoint` against the bridge's registered nodes. The hover highlight outlines the *outermost* registered ancestor under the cursor — that's what a single click grabs — with the effect's humanized name as a label. Moves are never intercepted.
-- **Click:** `pointerdown` (and the follow-up `click`) are intercepted with `preventDefault` + `stopPropagation`, so selecting never triggers the app's own click handlers (no accidental navigation or cart adds). A click on a registered element selects it; a click on empty space deselects.
-- **Drill:** a second click within 450ms and 8px — or a native double-click — selects the *deepest* registered element under the point, for nested registrations (a card entrance wrapping a button press spring). The Layers panel is the discoverable equivalent.
-- **Synthetic events are ignored** (`isTrusted` check), so the Replay verb's simulated press reaches the app instead of being swallowed as a selection click.
-- **Overlay-owned UI is exempt** — clicks on the toolkit and panels are handled by them, never hit-tested through to the app.
-
-### Selection persistence across HMR
-
-The selected effect id is stored in `sessionStorage`. On re-registration after an HMR reload, if the incoming effect id matches the stored selection, it is restored automatically. Effect ids (`ComponentName::SchemaName`) are stable as long as neither name changes; if either changes, selection is lost — acceptable behavior.
-
-Opening or closing the toolkit clears the selection — every editing session starts clean. The sessionStorage restore exists solely to survive HMR reloads *mid-session*.
+Opening or closing the toolkit clears selection. The selected id is also stored in `sessionStorage` so a mid-session application HMR can restore it when the same `slug#n` registers again. Every selection is posted to `/select` for `.motionworks/selected.json` and `npx motionworks status`.
 
 ---
 
 ## Parameter Type Overrides
 
-Right-clicking a parameter row opens a context menu offering exact numeric entry and **"Edit parameter type."** Choosing a different semantic type switches the editing surface immediately (a local override in the `TypeOverrideStore`) and sends a `type-correction` message to the MCP bridge. The correction persists in bridge state until the agent writes the corrected type to source; when HMR re-registers the effect with the corrected type, the local override is dropped automatically. Full protocol: `AGENT_INTEGRATION.md` → "Handling Type Corrections".
+Right-clicking a parameter row offers exact numeric entry and “Edit parameter type.” A new type takes effect immediately through the local `TypeOverrideStore` and is attached as `typeCorrections` to the next journal entry. A correction can be applied without a value drag.
+
+When refreshed source registers the corrected type, the local override is dropped. There is no separate type-correction transport or file.
 
 ---
 
-## HMR Resilience
+## Diff and Stylesheet Resilience
 
-HMR is the most disruptive event in MotionWorks's lifecycle — and also the normal way agent writebacks arrive. The approach:
+The overlay session owns the state manager, diff store, and type overrides independently of application components. Uncommitted diffs are serialized to `localStorage` per origin with a short debounce.
 
-- **`MotionWorksProvider` lives in its own React root**, unaffected by HMR in the application's root. Its portal container is created imperatively so it survives provider-level HMR too.
-- **The bridge is a `globalThis` singleton** with a shape-version key, so hot-swapping the bridge module never orphans the registered node map.
-- **The overlay session owns its own state manager and diff store.** Registration/unregistration events update the registry; the designer's uncommitted intent (`from → to` per param) lives in the `DiffStore`, which nothing about HMR touches.
-- **Fingerprint-driven re-registration** (see above) means a writeback that only changes a named constant still produces a fresh registration with the new baseline.
-- **Reconciliation** runs on every re-registration of an effect with an outstanding diff: if the new baseline equals the designer's chosen value, the diff is cleared (the writeback landed); if it equals the old baseline, the diff is kept and re-applied to the live effect (the write didn't take); anything else is flagged. Full matrix in `SOURCE_SYNC.md`.
+`watchStylesheets` observes head/body subtree changes and load events on stylesheet links. On a detected swap it:
+
+1. restores prior inline values;
+2. re-reads computed CSS baselines;
+3. re-registers live nodes;
+4. reconciles journal entries and local diffs;
+5. re-applies outstanding intent when source still has the old baseline.
+
+Journal acknowledgment is entry-driven. Each polled entry is compared directly to current registered baselines and type declarations, so an entry arriving after hydration/reconciliation is still acknowledged correctly.
+
+For static serving without HMR, an applied entry can add `?mw=<timestamp>` to the matching stylesheet link, forcing the new source value to load.
 
 ---
 
 ## Multi-Effect Scenarios
 
-A single component can register multiple effects (e.g., a hover animation and an entrance animation) — each `useMotionWorks` call is a separate registration. Nested registrations on the same DOM subtree are reached by drill-clicking or through the **Layers** panel, which lists every animation on or inside the selected element. When nothing is selected, the same slot shows the page-wide **Animated surfaces** list — a navigator that highlights each entry's element on hover and selects on click (useful for offscreen, tiny, or stacked elements).
+One DOM subtree may contain multiple registrations. Drill selection and the Layers panel reach nested effects. With no selection, Animated surfaces lists every registered effect and highlights its node on hover.
 
-One effect is edited at a time. There is no multi-selection; simultaneous multi-element manipulation is a post-MVP feature. The **Time** family is the partial exception: it edits every duration/stagger parameter across the whole selection scope (nested animations included) in one panel.
+One effect is selected at a time; general multi-selection remains out of scope. The Time family is the partial exception: it can edit duration/stagger parameters across the current nested selection scope.

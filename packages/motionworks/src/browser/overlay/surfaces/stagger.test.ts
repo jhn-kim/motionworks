@@ -1,32 +1,32 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
-import { scaleSubsequentDelays } from './stagger.js';
+import { scaleSubsequentDelays } from "./stagger.js";
 
-describe('scaleSubsequentDelays', () => {
-  it('doubles a gap → scales every subsequent element by 2', () => {
+describe("scaleSubsequentDelays", () => {
+  it("doubles a gap → scales every subsequent element by 2", () => {
     const delays = [0, 100, 200, 300];
     // Current gap between 0 and 1 is 100; make it 200.
     const next = scaleSubsequentDelays(delays, 0, 200);
     expect(next).toEqual([0, 200, 400, 600]);
   });
 
-  it('halves a gap → scales subsequent elements proportionally', () => {
+  it("halves a gap → scales subsequent elements proportionally", () => {
     const delays = [0, 200, 400, 600];
     // Current gap 200 → halve to 100.
     const next = scaleSubsequentDelays(delays, 0, 100);
     expect(next).toEqual([0, 100, 200, 300]);
   });
 
-  it('is a no-op when the gap index is out of range', () => {
+  it("is a no-op when the gap index is out of range", () => {
     expect(scaleSubsequentDelays([0, 100], 5, 200)).toEqual([0, 100]);
     expect(scaleSubsequentDelays([0, 100], -1, 200)).toEqual([0, 100]);
   });
 
-  it('does nothing when the current gap is zero', () => {
+  it("does nothing when the current gap is zero", () => {
     expect(scaleSubsequentDelays([0, 0, 100], 0, 50)).toEqual([0, 0, 100]);
   });
 
-  it('scales a middle gap without affecting earlier elements', () => {
+  it("scales a middle gap without affecting earlier elements", () => {
     const delays = [0, 100, 200, 400];
     // Scale the gap between anchors 1 and 2 (currently 100) to 300.
     const next = scaleSubsequentDelays(delays, 1, 300);
@@ -38,7 +38,7 @@ describe('scaleSubsequentDelays', () => {
     expect(next).toEqual([0, 100, 400, 1000]);
   });
 
-  it('enforces monotonically increasing order', () => {
+  it("enforces monotonically increasing order", () => {
     // If a scale would push anchor N behind anchor N-1, it stays at N-1's
     // delay.
     const delays = [0, 100, 200];

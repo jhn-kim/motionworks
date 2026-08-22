@@ -1,9 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState } from "react";
 
-import type { MotionWorksEffect } from '../../shared/index.js';
+import type { MotionWorksEffect } from "../../shared/index.js";
 
-import { useOverlaySession } from './context.js';
-import { COLORS, FONT, PANEL, RESERVED_KEYS, SCRUBBER } from './theme.js';
+import { useOverlaySession } from "./context.js";
+import { COLORS, FONT, PANEL, RESERVED_KEYS, SCRUBBER } from "./theme.js";
 
 interface Props {
   active: boolean;
@@ -15,12 +15,18 @@ interface Props {
 // through the same manipulate() pipeline as normal params — effects that
 // don't handle the reserved key just ignore it (this is fine because a
 // non-opted-in effect never shows the UI in the first place).
-export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element | null {
+export function Scrubber({
+  active,
+  selectedEffect,
+}: Props): React.JSX.Element | null {
   const session = useOverlaySession();
   const [time, setTime] = useState(0);
   const [dragging, setDragging] = useState(false);
 
-  const shouldRender = active && selectedEffect !== null && selectedEffect.capabilities?.scrub === true;
+  const shouldRender =
+    active &&
+    selectedEffect !== null &&
+    selectedEffect.capabilities?.scrub === true;
 
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -41,8 +47,8 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
       };
       const up = (): void => {
         setDragging(false);
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
@@ -53,8 +59,8 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
       const initial = compute(event.clientX);
       setTime(initial);
       session.sendReserved(selectedEffect.id, RESERVED_KEYS.scrub, initial);
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [selectedEffect, session],
   );
@@ -66,7 +72,7 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
   return (
     <div
       style={{
-        position: 'fixed',
+        position: "fixed",
         left: SCRUBBER.padding,
         right: SCRUBBER.padding,
         bottom: SCRUBBER.bottomOffset,
@@ -79,11 +85,11 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
         fontSize: FONT.sizeSmall,
         color: COLORS.neutralInk,
         boxShadow: PANEL.shadow,
-        display: 'flex',
-        alignItems: 'center',
+        display: "flex",
+        alignItems: "center",
         gap: 12,
-        pointerEvents: 'auto',
-        userSelect: 'none',
+        pointerEvents: "auto",
+        userSelect: "none",
       }}
     >
       <span style={{ opacity: 0.7, fontFamily: FONT.mono }}>
@@ -94,43 +100,43 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
         style={{
           flex: 1,
           height: 16,
-          position: 'relative',
-          cursor: dragging ? 'grabbing' : 'grab',
+          position: "relative",
+          cursor: dragging ? "grabbing" : "grab",
         }}
       >
         <div
           style={{
-            position: 'absolute',
-            top: '50%',
+            position: "absolute",
+            top: "50%",
             left: 0,
             right: 0,
             height: 4,
-            transform: 'translateY(-50%)',
+            transform: "translateY(-50%)",
             background: COLORS.panelHairline,
             borderRadius: 2,
           }}
         />
         <div
           style={{
-            position: 'absolute',
-            top: '50%',
+            position: "absolute",
+            top: "50%",
             left: 0,
             width: `${String(fraction * 100)}%`,
             height: 4,
-            transform: 'translateY(-50%)',
+            transform: "translateY(-50%)",
             background: COLORS.accentSoft,
             borderRadius: 2,
           }}
         />
         <div
           style={{
-            position: 'absolute',
-            top: '50%',
+            position: "absolute",
+            top: "50%",
             left: `calc(${String(fraction * 100)}% - ${String(SCRUBBER.handleRadius)}px)`,
             width: SCRUBBER.handleRadius * 2,
             height: SCRUBBER.handleRadius * 2,
-            transform: 'translateY(-50%)',
-            borderRadius: '50%',
+            transform: "translateY(-50%)",
+            borderRadius: "50%",
             background: COLORS.accent,
             boxShadow: PANEL.shadow,
           }}
@@ -144,14 +150,14 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
           session.sendReserved(selectedEffect.id, RESERVED_KEYS.scrub, 0);
         }}
         style={{
-          padding: '4px 10px',
+          padding: "4px 10px",
           fontSize: FONT.sizeSmall,
           fontFamily: FONT.family,
           border: `1px solid ${COLORS.panelBorder}`,
-          background: 'transparent',
+          background: "transparent",
           borderRadius: 4,
           color: COLORS.neutralInk,
-          cursor: 'pointer',
+          cursor: "pointer",
         }}
       >
         Reset
@@ -163,5 +169,5 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
 function formatTime(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const remainder = Math.floor(ms % 1000);
-  return `${String(seconds).padStart(2, '0')}.${String(remainder).padStart(3, '0')}s`;
+  return `${String(seconds).padStart(2, "0")}.${String(remainder).padStart(3, "0")}s`;
 }

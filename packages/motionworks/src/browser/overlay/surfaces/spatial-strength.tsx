@@ -1,10 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState } from "react";
 
-import { useOverlaySession } from '../context.js';
-import { COLORS, STRENGTH_SURFACE, STROKE } from '../theme.js';
-import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
-import { useNodeRect } from './shared/hooks.js';
-import type { SurfaceProps } from './shared/props.js';
+import { useOverlaySession } from "../context.js";
+import { COLORS, STRENGTH_SURFACE, STROKE } from "../theme.js";
+import { NumericEditor, SurfaceContextMenu } from "./shared/context-menu.js";
+import { useNodeRect } from "./shared/hooks.js";
+import type { SurfaceProps } from "./shared/props.js";
 
 // Distance from centre → parameter value, clamped to [min, max]. Exposed
 // for unit tests independent of DOM state.
@@ -74,16 +74,16 @@ export function SpatialStrengthSurface({
       };
       const up = (): void => {
         setDragging(false);
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // pointer already released
         }
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [effectId, max, min, paramKey, rect, session, validBounds],
   );
@@ -131,7 +131,7 @@ export function SpatialStrengthSurface({
         fill="rgba(94, 234, 212, 0.001)"
         stroke="none"
         pointerEvents="all"
-        style={{ cursor: dragging ? 'grabbing' : 'grab' }}
+        style={{ cursor: dragging ? "grabbing" : "grab" }}
         onPointerDown={handlePointerDown}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -175,7 +175,7 @@ export function SpatialStrengthSurface({
           y={cy - 14}
           width={140}
           height={30}
-          style={{ overflow: 'visible' }}
+          style={{ overflow: "visible" }}
         >
           <NumericEditor
             initial={liveValue}
@@ -191,7 +191,7 @@ export function SpatialStrengthSurface({
           y={0}
           width={window.innerWidth}
           height={window.innerHeight}
-          style={{ overflow: 'visible', pointerEvents: 'none' }}
+          style={{ overflow: "visible", pointerEvents: "none" }}
         >
           <SurfaceContextMenu
             x={menu.x}
@@ -229,7 +229,9 @@ function ArrowHead({ x, y, angle, color }: ArrowHeadProps): React.JSX.Element {
   const p1y = backY + ny * wing;
   const p2x = backX - nx * wing;
   const p2y = backY - ny * wing;
-  return <polygon points={`${x},${y} ${p1x},${p1y} ${p2x},${p2y}`} fill={color} />;
+  return (
+    <polygon points={`${x},${y} ${p1x},${p1y} ${p2x},${p2y}`} fill={color} />
+  );
 }
 
 function roundStrength(value: number, min: number, max: number): number {

@@ -5,7 +5,9 @@ const INTERACTIVE_SELECTOR =
 // registered on a decorative child (a badge, an underline span) of the
 // interactive element the designer would actually press — closest() walks up
 // to it. Null when nothing pressable encloses the node.
-export function findInteractiveNode(node: HTMLElement | null): HTMLElement | null {
+export function findInteractiveNode(
+  node: HTMLElement | null,
+): HTMLElement | null {
   if (node === null) return null;
   const hit = node.closest(INTERACTIVE_SELECTOR);
   return hit instanceof HTMLElement ? hit : null;
@@ -15,24 +17,24 @@ export function findInteractiveNode(node: HTMLElement | null): HTMLElement | nul
 // human-recognizable target for source writeback. This is a best-effort
 // human-facing label, not something the agent parses to locate code.
 export function describeNode(node: Element): string {
-  if (node.id !== '') return `#${node.id}`;
+  if (node.id !== "") return `#${node.id}`;
   const segments: string[] = [];
   let current: Element | null = node;
   let depth = 0;
   while (current !== null && depth < 4) {
     let seg = current.tagName.toLowerCase();
-    if (current.id !== '') {
+    if (current.id !== "") {
       seg = `#${current.id}`;
       segments.unshift(seg);
       break;
     }
-    if (typeof current.className === 'string' && current.className.length > 0) {
-      const cls = current.className.trim().split(/\s+/).slice(0, 2).join('.');
+    if (typeof current.className === "string" && current.className.length > 0) {
+      const cls = current.className.trim().split(/\s+/).slice(0, 2).join(".");
       if (cls.length > 0) seg = `${seg}.${cls}`;
     }
     segments.unshift(seg);
     current = current.parentElement;
     depth++;
   }
-  return segments.join(' > ');
+  return segments.join(" > ");
 }

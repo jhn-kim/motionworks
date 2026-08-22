@@ -5,7 +5,11 @@
 // surfaces can appear/disappear without the CanvasLayer needing to know
 // their names.
 
-export type CanvasDraw = (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
+export type CanvasDraw = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+) => void;
 
 class CanvasDrawRegistry {
   private drawers = new Map<string, CanvasDraw>();

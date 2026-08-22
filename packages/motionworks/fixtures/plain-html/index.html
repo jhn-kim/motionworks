@@ -1,14 +1,96 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MotionWorks plain HTML fixture</title>
-    <link rel="stylesheet" href="/styles.css">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MotionWorks animation playground</title>
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main>
-      <div class="hero" data-motionworks='{"name":"Hero radius","params":{"radius":{"type":"spatial-radius","unit":"px"}}}'>MotionWorks</div>
+      <header class="intro">
+        <p class="eyebrow">MotionWorks test fixture</p>
+        <h1>Animation playground</h1>
+        <p>
+          Open MotionWorks, select a card, and explore each parameter family.
+        </p>
+      </header>
+
+      <section class="gallery" aria-label="MotionWorks animation fixtures">
+        <article
+          class="demo hero"
+          data-motionworks='{"name":"Hero radius","params":{"radius":{"type":"spatial-radius","label":"Radius","unit":"px","min":64,"max":220}}}'
+        >
+          <div class="demo-heading">
+            <span>Space</span>
+            <strong>Radius</strong>
+          </div>
+          <div class="hero-orb"><span class="hero-value">120px</span></div>
+        </article>
+
+        <article
+          class="demo pulse"
+          data-motionworks='{"name":"Pulse energy","capabilities":{"replay":true},"params":{"strength":{"type":"spatial-strength","label":"Pulse strength","min":0.8,"max":1.8,"var":"--mw-pulse-strength"},"duration":{"type":"duration","label":"Pulse duration","unit":"ms","min":400,"max":3000,"var":"--mw-pulse-duration"}}}'
+        >
+          <div class="demo-heading">
+            <span>Space + Time</span>
+            <strong>Pulse</strong>
+          </div>
+          <div class="pulse-stage"><div class="pulse-orb"></div></div>
+        </article>
+
+        <article
+          class="demo bounce"
+          data-motionworks='{"name":"Elastic bounce","capabilities":{"replay":true},"params":{"height":{"type":"spatial-radius","label":"Bounce height","unit":"px","min":24,"max":120,"var":"--mw-bounce-height"},"duration":{"type":"duration","label":"Bounce duration","unit":"ms","min":500,"max":2400,"var":"--mw-bounce-duration"},"easing":{"type":"easing-curve","label":"Bounce easing","var":"--mw-bounce-easing"}}}'
+        >
+          <div class="demo-heading">
+            <span>Space + Feel + Time</span>
+            <strong>Bounce</strong>
+          </div>
+          <div class="bounce-stage"><div class="bounce-ball"></div></div>
+        </article>
+
+        <article
+          class="demo stagger"
+          data-motionworks='{"name":"Stagger wave","capabilities":{"replay":true},"params":{"gap":{"type":"stagger","label":"Delay between bars","unit":"ms","min":20,"max":180,"var":"--mw-stagger-gap"}}}'
+        >
+          <div class="demo-heading">
+            <span>Time</span>
+            <strong>Stagger</strong>
+          </div>
+          <div class="stagger-bars" aria-hidden="true">
+            <i style="--index: 0"></i>
+            <i style="--index: 1"></i>
+            <i style="--index: 2"></i>
+            <i style="--index: 3"></i>
+            <i style="--index: 4"></i>
+          </div>
+        </article>
+
+        <article class="demo path-runner">
+          <div class="demo-heading">
+            <span>Space + Time</span>
+            <strong>Path</strong>
+          </div>
+          <div
+            class="path-stage"
+            data-motionworks='{"name":"Path runner","capabilities":{"replay":true},"params":{"route":{"type":"path","label":"Runner path","var":"--mw-runner-path"},"duration":{"type":"duration","label":"Lap duration","unit":"ms","min":800,"max":5000,"var":"--mw-runner-duration"}}}'
+          >
+            <div class="runner-dot"></div>
+          </div>
+        </article>
+
+        <article
+          class="demo shimmer"
+          data-motionworks='{"name":"Gradient shimmer","capabilities":{"replay":true},"params":{"colors":{"type":"gradient","label":"Shimmer colors","var":"--mw-shimmer-colors"},"duration":{"type":"duration","label":"Shimmer duration","unit":"ms","min":500,"max":4000,"var":"--mw-shimmer-duration"},"glow":{"type":"scalar","label":"Glow","min":0,"max":1,"var":"--mw-shimmer-glow"}}}'
+        >
+          <div class="demo-heading">
+            <span>Style + Time</span>
+            <strong>Gradient</strong>
+          </div>
+          <div class="shimmer-surface">Motion, tuned by feel.</div>
+        </article>
+      </section>
     </main>
     <script src="/effect.js"></script>
   </body>

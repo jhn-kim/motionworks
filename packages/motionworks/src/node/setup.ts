@@ -75,35 +75,50 @@ export async function ensureGitignore(options: {
 }): Promise<SetupOutcome> {
   const { cwd, yes, input, output, log } = options;
   const path = join(cwd, ".gitignore");
-  let existing = '';
-  try { existing = await readFile(path, 'utf8'); } catch { /* absent */ }
-  if (existing.split(/\r?\n/).includes('.motionworks/')) {
+  let existing = "";
+  try {
+    existing = await readFile(path, "utf8");
+  } catch {
+    /* absent */
+  }
+  if (existing.split(/\r?\n/).includes(".motionworks/")) {
     log(step(symbols.skipped, `${dim(path)} already ignores .motionworks/`));
-    return { kind: 'gitignore-already-configured', path };
+    return { kind: "gitignore-already-configured", path };
   }
   if (!yes) {
     const ok = await confirm(`Add .motionworks/ to ${path}?`, input, output);
-    if (!ok) return { kind: 'cancelled', step: 'gitignore', reason: 'user declined' };
+    if (!ok)
+      return { kind: "cancelled", step: "gitignore", reason: "user declined" };
   }
-  const separator = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
-  await writeFile(path, `${existing}${separator}.motionworks/\n`, 'utf8');
+  const separator =
+    existing.length === 0 || existing.endsWith("\n") ? "" : "\n";
+  await writeFile(path, `${existing}${separator}.motionworks/\n`, "utf8");
   log(step(symbols.done, `Updated ${dim(path)} — ignored .motionworks/`));
-  return { kind: 'gitignore-updated', path };
+  return { kind: "gitignore-updated", path };
 }
 
 export async function removeStaleMcpEntry(cwd: string): Promise<SetupOutcome> {
-  const path = join(cwd, '.mcp.json');
+  const path = join(cwd, ".mcp.json");
   const existing = await readJsonFile(path);
   const servers = existing?.mcpServers;
-  if (existing === null || typeof servers !== 'object' || servers === null || !("motionworks" in servers)) {
-    return { kind: 'stale-mcp-entry-absent', path };
+  if (
+    existing === null ||
+    typeof servers !== "object" ||
+    servers === null ||
+    !("motionworks" in servers)
+  ) {
+    return { kind: "stale-mcp-entry-absent", path };
   }
   const nextServers = { ...(servers as Record<string, unknown>) };
   delete nextServers.motionworks;
   const next = { ...existing, mcpServers: nextServers };
-  if (Object.keys(nextServers).length === 0 && Object.keys(existing).length === 1) await unlink(path);
-  else await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
-  return { kind: 'stale-mcp-entry-removed', path };
+  if (
+    Object.keys(nextServers).length === 0 &&
+    Object.keys(existing).length === 1
+  )
+    await unlink(path);
+  else await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  return { kind: "stale-mcp-entry-removed", path };
 }
 
 export async function ensureReactInstalled(options: {
@@ -160,7 +175,12 @@ export async function ensureReactInstalled(options: {
       return { kind: "cancelled", step: "install", reason: "user declined" };
   }
 
-  log(step(symbols.updated, dim(`Installing motionworks with ${packageManager}…`)));
+  log(
+    step(
+      symbols.updated,
+      dim(`Installing motionworks with ${packageManager}…`),
+    ),
+  );
   const exitCode = await run(argv, cwd);
   if (exitCode !== 0) {
     log(
@@ -171,7 +191,12 @@ export async function ensureReactInstalled(options: {
     );
     return { kind: "react-install-failed", packageManager, exitCode };
   }
-  log(step(symbols.done, `Installed motionworks ${dim(`with ${packageManager}`)}`));
+  log(
+    step(
+      symbols.done,
+      `Installed motionworks ${dim(`with ${packageManager}`)}`,
+    ),
+  );
   return { kind: "react-installed", packageManager };
 }
 
@@ -237,10 +262,12 @@ export async function runSetup(
       log(
         `  ${cyan("1.")} Mount the overlay once in your app — follow "Mounting the overlay" in ${cyan(GUIDE_FILE)} ${dim("(dev-only; renders nothing in production)")}.`,
       );
-      log(`  ${cyan("2.")} Start the daemon with ${cyan('npx motionworks')}.`);
+      log(`  ${cyan("2.")} Start the daemon with ${cyan("npx motionworks")}.`);
     } else {
-      log(`  ${cyan("1.")} Add ${cyan('<script src="http://127.0.0.1:52340/motionworks.js"></script>')} before </body>.`);
-      log(`  ${cyan("2.")} Run ${cyan('npx motionworks serve .')}.`);
+      log(
+        `  ${cyan("1.")} Add ${cyan('<script src="http://127.0.0.1:52340/motionworks.js"></script>')} before </body>.`,
+      );
+      log(`  ${cyan("2.")} Run ${cyan("npx motionworks serve .")}.`);
     }
   }
 

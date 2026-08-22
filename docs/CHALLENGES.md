@@ -4,200 +4,155 @@
 
 ---
 
-## Challenge 1: Agent Schema Emission Reliability
+## Challenge 1: Agent Instrumentation Reliability
 
-**Root cause:** Coding agents are probabilistic. Even with a clear system prompt, an agent may omit the `useMotionWorks()` registration, emit an incomplete schema, use an unknown parameter type, or forget the `update()` function — especially when generating long files, when the agent is working quickly, or when the system prompt isn't fresh in context.
+**Root cause:** Coding agents are probabilistic. They may omit the MotionWorks schema, keep values in JavaScript, choose the wrong semantic type, or create CSS that cannot be decoded or written safely.
 
-**What breaks:** If the registration is missing, MotionWorks has nothing to display. The overlay shows the element as unregistered and manipulation is unavailable.
-
-**Chosen mitigation:**
-
-Three layers of defense, in order of reliability:
-
-1. **`CLAUDE.md` stanza + tool description nudges.** MCP resources are pull-based — they require an explicit `resources/read` call and are not automatically surfaced in Claude Code's system prompt when the server connects. The primary delivery mechanism is `npx motionworks init`, which appends a versioned, sentinel-delimited stanza to `CLAUDE.md`. Claude Code reads `CLAUDE.md` at every session start, making this reliable without any runtime agent action. Every MCP tool description also includes a compact nudge to call `motionworks_get_instructions` before implementing a motion effect — visible whenever the agent lists available tools. The `motionworks_get_instructions` tool returns the full guide on explicit fetch. See `AGENT_INTEGRATION.md` for the `init` command's idempotency handling, drift detection, and confirmation-before-overwrite behavior.
-
-2. **Validation with useful errors.** When a registration arrives, `@motionworks/core` validates it fully. Invalid registrations produce console errors that name the specific problem (missing `update`, unknown type, type/value mismatch). The agent sees these in its tool output and can self-correct.
-
-3. **Degraded mode instead of silent failure.** Even a partial registration is accepted. MotionWorks shows what it can: if `update` is missing, surfaces render read-only. If a type is unknown, that param falls back to `scalar`. The designer can still see what was registered and the agent can fix it on the next iteration.
-
-**What was not chosen and why:**
-
-- *MCP resource auto-injection* — MCP resources require an explicit fetch; they do not auto-inject into the agent's system prompt on server connect. The original design assumed this was possible — it is not. Tool descriptions and `CLAUDE.md` are the real automatic surfaces.
-- *Auto-appending to `CLAUDE.md` on server startup* — injecting into user files as a side effect of `npx motionworks` creates idempotency, conflict, and drift problems without a clean resolution. Splitting into `init` (writes once, with confirmation) and `start` (reads version tag, never writes) separates these responsibilities cleanly.
-- *Automatic post-generation code analysis* — parsing generated code to infer parameter semantics is fragile. Variable names, code structure, and library usage are too varied. High maintenance cost, unreliable results.
-- *Requiring agents to use a fixed code scaffold/template* — rigid scaffolding fights against agents' tendency to write code contextually. Guide-based instruction is more flexible.
-
-**Remaining risk:** An agent that ignores its system prompt (or where the prompt isn't loaded) will not emit schema. There is no fully automatic fallback. In the long term, heuristic detection of CSS animations, Framer Motion props, and GSAP tweens would reduce this risk — but that is explicitly post-MVP.
-
----
-
-## Challenge 2: Live Update API Surface Across Libraries
-
-**Root cause:** The effect's `update()` function must work synchronously across whatever animation library the agent chose — CSS, Framer Motion, GSAP, Three.js, custom WebGL, or combinations. Each library has a different API for mutating live animation values.
-
-**What breaks:** If `update()` uses async patterns, triggers React re-renders, or is implemented incorrectly for the library, the live preview is laggy or broken. This makes MotionWorks feel worse than just typing in the chat.
+**What breaks:** The element is invisible to MotionWorks, the parameter is unbound, or Apply always requires handoff.
 
 **Chosen mitigation:**
 
-The `RUNTIME_BRIDGE.md` document provides concrete, copy-pasteable implementation patterns for each major library. The system prompt references these patterns. The agent's job is to match the effect's library to the correct `update()` pattern.
+1. `npx motionworks init` writes a versioned `MOTIONWORKS.md` from the package's canonical guide and a short reference stanza into the project's agent instruction files.
+2. The stanza tells agents to read the guide, check `npx motionworks changes` before motion-value edits, and use `status` for “this one” context.
+3. Registration validation warns about legacy `value`/`update`, unknown types, invalid `var`, and invalid bounds instead of silently rejecting the whole effect.
+4. Binding warns when CSS is absent, malformed, or uses an unsupported relative unit.
+5. CSS keyframe animation auto-detection provides useful coverage when no explicit schema exists.
 
-The key insight: each library has exactly one right way to do a synchronous live update:
-- CSS: `setProperty` on a custom property
-- Framer Motion: `MotionValue.set()`
-- GSAP: `gsap.set()` with duration 0
-- WebGL/Three.js: direct uniform mutation
-
-The agent should not invent its own approach. It should use the documented pattern.
-
-MotionWorks validates that `update` is a function at registration time. If it is not, surfaces render read-only with a visible warning that includes a link to the implementation guide.
-
-**Remaining risk:** Novel effects using libraries not covered in the guide will require the agent to infer the correct approach. The agent's code understanding is usually sufficient for this, but it is an untested path. The guide should be expanded over time as new libraries appear in agent-generated code.
+**Remaining risk:** An agent can still ignore its instructions or omit explicit registration for a JavaScript-driven effect. Framer Motion, GSAP, react-spring, WebGL, and custom loops cannot be inferred reliably; generated code still needs the schema and CSS bridge.
 
 ---
 
 ## Challenge 3: Source Writeback Precision
 
-**Root cause:** When MotionWorks sends a changeset to the agent, the agent must find exactly the right location in source to update. A value like `0.8` for `distortion` might appear in many places — inline in a component, in a config object, in a default prop, in a test. The agent must update exactly one of them.
+**Root cause:** The daemon must update exactly one canonical source declaration. A custom property may appear in multiple selectors, files, themes, tests, or generated output.
 
-**What breaks:** The agent updates the wrong instance, or updates multiple instances, or updates a computed intermediate rather than the canonical source. The designer's intent is applied incorrectly.
+**What breaks:** A guessed edit could change the wrong surface or several unrelated effects.
 
 **Chosen mitigation:**
 
-The `sourceHints` system in the schema. When the agent generates an effect, it is required (by the system prompt) to extract all parameter values into named constants and include those constants' names and file locations as `sourceHints` in the registration:
+1. Adjustable values use uniquely declared `--mw-*` properties rather than common numeric literals or JavaScript constants.
+2. Commits carry the exact property, semantic type, `fromCss`, `toCss`, selector, stylesheet URL, and developer-server source file when visible.
+3. Direct write is comment/string-aware, narrows by source file and selector, requires exactly one candidate, and resolves every change before writing any file.
+4. A skipped direct write never guesses. It moves to a narrowly instructed auto-agent or remains pending for inspected manual handoff.
+5. Paths are constrained to the project root; values, names, paths, and selectors are treated as data.
 
-```ts
-sourceHints: {
-  distortion: { file: 'src/effects/liquid.ts', variable: 'DISTORTION_STRENGTH' },
-}
-```
-
-With this hint, the agent's writeback task is trivial: open the specified file, find the variable, update its value. No search, no ambiguity.
-
-Named constants also prevent the underlying problem: there is only one place the value exists in source. If the agent uses inline literals (`distortion: 0.8`), that `0.8` might appear in tests, stories, and documentation. Named constants have one canonical location.
-
-**Remaining risk:** Source hints can become stale if the codebase is refactored (files renamed, constants moved). MotionWorks has no way to detect stale hints. The changeset will include the stale path; the agent will fail to find it and should report the failure. This is acceptable — stale hints produce a clear error rather than a silent wrong edit. The designer can re-register with updated hints after a refactor.
+**Remaining risk:** The auto-agent instruction is a behavioral constraint, not an enforcement layer. A workspace-edit-capable agent can still make a broader change. Operators can use `--no-agent` when they prefer manual review.
 
 ---
 
-## Challenge 4: Framework and Library Agnosticism
+## Challenge 11: CSSOM Visibility and Source Mapping
 
-**Root cause:** There is no standard API for "update this animation's parameters at runtime." CSS animations, Framer Motion, GSAP, react-spring, Three.js, custom WebGL — each has a completely different model. MotionWorks's manipulation surfaces are library-agnostic (they produce a `Record<string, unknown>` and call `update()`), but the `update()` function must be library-specific.
+**Root cause:** The browser can compute a property even when it cannot expose the rule or map it to a source file. Cross-origin stylesheets throw on `cssRules`; constructed stylesheets, CSS-in-JS, Tailwind-generated output, and some CSS Module pipelines hide or transform authoring locations.
 
-**What breaks:** If the library-specific `update()` pattern is wrong, either the preview doesn't work or it works but causes side effects (React state updates, new tweens, frame skips).
+**What breaks:** The commit has a correct property/value but incomplete rule or source-file context, reducing direct-write precision.
 
 **Chosen mitigation:**
 
-The `update()` function is the abstraction boundary. MotionWorks knows nothing about the library; the effect knows nothing about MotionWorks's manipulation model. This boundary is well-defined and testable.
+- `findDeclaringRule` walks readable stylesheets and nested grouping rules, skips inaccessible sheets, accepts matching `:root` declarations, and takes the last matching cascade rule.
+- Vite's `data-vite-dev-id` is captured as `sourceFile` when available.
+- The CSS writer can fall back to project-wide property plus semantic `fromCss` uniqueness; CSS Module hash selectors therefore do not automatically block direct write.
+- Missing/ambiguous context falls through to the agent instead of weakening the uniqueness policy.
 
-The agent implements `update()` using the library-specific pattern from `RUNTIME_BRIDGE.md`. The system prompt specifies which pattern to use for which library. The only requirement on MotionWorks's side: `update()` must be called with the new param values, and the visual result must be visible on the next frame.
+**Remaining risk:** Some valid effects will always require agent handoff. MotionWorks deliberately favors a safe skip over a speculative source edit.
 
-This architecture means adding support for a new library is entirely a matter of documenting the correct `update()` pattern — it requires no changes to MotionWorks's overlay or schema code.
+---
 
-**Remaining risk:** Exotic effects (e.g., a custom canvas simulation with its own physics engine) may not have a simple "mutate this property" path. The agent will need to implement a more complex `update()` — pausing the simulation, applying new params, and resuming. This is possible but requires the agent to understand MotionWorks's synchronous requirement. Include this case in the agent system prompt's examples over time.
+## Challenge 12: Localhost Trust and Auto-Agent Authority
+
+**Root cause:** The daemon must accept browser POSTs from local development servers. Loopback CORS prevents remote origins but another localhost page could attempt a commit, and a spawned agent has workspace edit permission.
+
+**What breaks:** Without additional constraints, an unrelated local page could trigger file or agent work.
+
+**Chosen mitigation:**
+
+1. The daemon binds to `127.0.0.1` and accepts browser Origins only from loopback hostnames.
+2. Commit properties are allowlisted to `--mw-*` and three animation longhands.
+3. `motionworks.config.json` may define a token; the standalone/React URL carries it and every POST must present it.
+4. Claude runs with Edit/Read/Grep/Glob but not Bash; Codex runs in workspace-write rooted at the project.
+5. Agent instructions limit work to named declarations, prohibit refactors, and label all page-supplied strings as untrusted data.
+
+**Remaining risk:** The token is optional and agent restrictions are not a declaration-level sandbox. Do not expose the daemon outside loopback; use `--no-agent` where manual approval is required.
 
 ---
 
 ## Challenge 5: Overlay Performance on Complex Pages
 
-**Root cause:** The canvas layer redraws on every `requestAnimationFrame` when the overlay is active. On pages with many animated elements, tracking positions and rendering ghost frames can be expensive. The overlay must not slow down the product's own animations.
+**Root cause:** Selection tracking, highlights, toolkit interaction, and on-canvas editing share a frame budget with the product's own motion.
 
-**What breaks:** The product feels sluggish while the overlay is active. The designer cannot accurately judge motion feel when the overlay degrades performance.
+**What breaks:** The designer judges an effect while tooling-induced jank changes its apparent feel.
 
 **Chosen mitigation:**
 
-1. **Canvas redraw only when active and selected.** If no element is selected, the canvas is cleared and not redrawn. The `requestAnimationFrame` loop pauses when the overlay is inactive.
+- Live custom-property writes are browser-local; no network message or React application render occurs per pointer move.
+- The overlay root is separate from the product root and imperative pointer-follow visuals avoid render-per-move.
+- Canvas/SVG layers mount only for scoped editors that need them; today the path editor is the only active on-canvas surface.
+- Only one effect is selected at a time, and the overlay is development-only.
 
-2. **Selective canvas layers.** Each surface type uses its own canvas layer (not one giant canvas). The ghost-frames canvas only redraws when the selected element is animating. The radius canvas only redraws when dragging.
-
-3. **Bounded position history.** The temporal-decay surface records a maximum of 120 historical positions (~2 seconds at 60fps) per element. Older positions are discarded. This caps memory and redraw cost.
-
-4. **One element selected at a time.** Only the selected element's surfaces are rendered. Multi-element scenarios are post-MVP.
-
-5. **No overlay rendering in production builds.** The dynamic import guard means zero MotionWorks code runs in production — there is no performance penalty outside development.
-
-**Remaining risk:** Canvas rendering for WebGL or Three.js effects (where the effect itself is a full-canvas render) may conflict with the MotionWorks canvas overlay. In these cases, MotionWorks should use a transparent overlay canvas on top rather than trying to introspect the effect's own canvas. The radius and handle surfaces (SVG layer) are unaffected; only the trail visualization (canvas layer) may have issues on full-canvas effects.
+**Remaining risk:** Full-canvas WebGL or Three.js products compete for the same GPU/frame budget. Performance needs profiling against complex real applications, especially at high device-pixel ratios.
 
 ---
 
-## Challenge 6: Multi-Agent Compatibility
+## Challenge 7: Reload and Stylesheet-Swap Preservation
 
-**Root cause:** MCP is native to Claude Code but not to all agents. Codex (OpenAI API) has no MCP client. Custom agent setups may use their own protocols. MotionWorks cannot assume MCP is available.
+**Root cause:** Vite may replace style nodes, Next may reload links, static serving has no HMR, and a page can reload after source writeback. Registration and the first journal poll can arrive in either order.
 
-**What breaks:** Without MCP, the agent has no push notification when changes arrive. It must remember to check for changes proactively, which it will sometimes forget.
-
-**Chosen mitigation:**
-
-The file-based fallback: `motionworks-state.json` written to the project root. The agent's system prompt instructs it to read this file at the start of any motion-related task. The file is always current — MotionWorks writes it on every state change.
-
-This fallback is less reliable (pull rather than push, depends on the agent remembering) but is sufficient for cases where MCP is unavailable.
-
-**Priority:** MCP (Claude Code) is the primary and supported integration for MVP. File-based is a documented escape hatch. Codex-native integration is post-MVP.
-
-**Remaining risk:** Agents without system prompt customization (i.e., where the developer is using a fixed system prompt from a provider) cannot be instructed to use the file-based approach. In these cases, MotionWorks is effectively limited to read-only mode — the designer can manipulate but cannot commit changes automatically; they must apply values manually.
-
----
-
-## Challenge 7: HMR State Preservation
-
-**Root cause:** Hot Module Replacement unmounts and remounts React components when source files change. This fires `useMotionWorks` cleanup (unregistration) followed by re-registration with the new schema. Between these two events, MotionWorks's state is inconsistent — the selected effect no longer exists.
-
-**What breaks:** The designer loses their selection, active manipulation state, and potentially uncommitted changes mid-session whenever the agent makes a source edit.
+**What breaks:** Selection can disappear, uncommitted intent can be lost, or an applied journal entry can remain pending after its diff already reconciled.
 
 **Chosen mitigation:**
 
-1. **`MotionWorksProvider` mounts independently of the application's React root.** HMR does not affect it.
-2. **Selected effect ID is stored in `sessionStorage`**, which survives HMR. On re-registration, if the incoming effect ID matches the stored selection, selection is restored immediately.
-3. **Uncommitted changes are stored in the Provider's state**, not in the registered effect's component state. They survive HMR because the Provider survives.
-4. **Effect IDs are stable across HMR.** An effect ID is derived from the component's display name plus the `name` prop of the schema. Both are stable as long as the component is not renamed and the effect name doesn't change.
+1. The overlay mounts in an independent React root and the in-page bridge lives on `globalThis` behind a shape version.
+2. Selection uses `sessionStorage`; uncommitted diffs use origin-scoped `localStorage`.
+3. `watchStylesheets` observes style/link replacement and link load events, then restores, re-reads, re-registers, reconciles, and re-applies synchronously.
+4. Acknowledgment is entry-driven: each polled entry compares directly to current baselines and types, so late `/pending` responses still clear correctly.
+5. Applied entries can cache-bust the matching stylesheet link when there is no HMR.
 
-**Remaining risk:** If the agent changes a component's name or the effect's `name` string during an HMR cycle, the effect ID changes and the selection is lost. This is a rare case — agents refactoring component names while also adjusting motion parameters is unlikely. The designer loses their selection but not their uncommitted changes (changes are stored by effect ID; a warning is shown if the previously-selected ID is no longer found after HMR).
+**Remaining risk:** Development servers differ in how they update stylesheets, and cross-origin/constructed sheets can evade observation. Vite, Next, and static serving remain explicit regression targets.
 
 ---
 
 ## Challenge 8: WebGL and Shader Effects
 
-**Root cause:** Shader effects (Three.js materials, raw WebGL, GLSL) have parameters that are GPU-side. They are not inspectable from JavaScript without explicit wiring by the code author. MotionWorks cannot infer what a shader's uniforms are or what they mean.
+**Root cause:** GPU uniforms are not semantically discoverable from the DOM. MotionWorks can store a CSS value but cannot infer which shader field it controls.
 
-**What breaks:** MotionWorks cannot present any manipulation surfaces for a shader effect unless the agent explicitly exposes the uniforms through the `useMotionWorks` schema and `update()` function.
+**What breaks:** A registered parameter changes in CSS but the visual effect does not react.
 
-**Chosen mitigation:**
+**Chosen mitigation:** The coding agent declares only meaningful uniforms as schema parameters, reads them with `readParams`, subscribes to `motionworks:change`, and writes the values to cached uniform/material locations. Replay and scrub likewise use explicit CustomEvent listeners.
 
-Shader effects must wire their uniforms manually in the `update()` function. This is not optional — there is no fallback. The system prompt specifies the pattern (see `RUNTIME_BRIDGE.md`: Three.js and WebGL sections).
-
-The agent must also know which uniforms are designer-adjustable (semantic parameters) versus internal (implementation details). The system prompt instructs the agent to only expose uniforms that the designer would meaningfully want to adjust — not internal step counters, resolution uniforms, or device-pixel-ratio adjustments.
-
-**Remaining risk:** Highly complex shaders with dozens of uniforms that interact non-linearly may be difficult to expose meaningfully. In these cases, the agent should use judgment to expose only the 2–5 most perceptually significant uniforms. MotionWorks does not need to cover every shader parameter — it needs to cover the ones the designer would actually want to adjust.
+**Remaining risk:** Large shaders can have nonlinear interactions across dozens of uniforms. Agents should expose only the small set a designer can understand and tune independently.
 
 ---
 
 ## Challenge 9: Parameter Type Misassignment
 
-**Root cause:** The agent decides which semantic type to assign to each parameter (e.g., `spatial-strength` vs. `scalar`). A wrong assignment means the wrong manipulation surface is shown. A `temporal-decay` value assigned as `scalar` renders as a drag handle instead of a visual trail.
+**Root cause:** The coding agent chooses semantic types. A wrong choice produces the wrong editing curve or editor.
 
-**What breaks:** The designer gets a less useful surface. In the worst case (e.g., a `path` assigned as `scalar`), the surface is actively misleading.
+**What breaks:** The designer receives a misleading manipulation surface even when the CSS value itself is valid.
 
 **Chosen mitigation:**
 
-1. **The type vocabulary is small and well-named.** The 11 types in `SCHEMA.md` cover essentially all motion parameter concepts. Clear names and examples in the system prompt make correct assignment likely.
-2. **Validation produces console warnings for type/value mismatches.** If a `spatial-radius` receives a non-number value, MotionWorks logs a specific warning naming the param and type.
-3. **The designer can override types.** Right-clicking a manipulation surface in the overlay exposes an "Edit parameter type" option. The designer can change the type, which updates the surface immediately. The correction is stored in MotionWorks state as a `typeCorrections` entry and is included in the response of both `motionworks_get_state` and `motionworks_get_changes`. The agent updates the `type` field in the `useMotionWorks` call in source, then calls `motionworks_clear_type_corrections`. Full protocol in `AGENT_INTEGRATION.md` → "Handling Type Corrections."
+1. The vocabulary remains small and is documented with meaning, runtime shape, and CSS encoding.
+2. Validation corrects unknown types to `scalar`; binding warns about incompatible CSS.
+3. The designer can override a type from the parameter context menu.
+4. Corrections ride in the next journal entry, including correction-only commits. An agent changes only the listed schema `type`, and reconciliation drops the local override once source matches.
 
-**Remaining risk:** If the agent consistently assigns the wrong type (a systemic pattern), the system prompt needs to be updated with clearer examples or explicit anti-examples ("do NOT use `scalar` for trail persistence — use `temporal-decay`"). Monitor for these patterns in practice.
+**Remaining risk:** Repeated misclassification indicates the generated guide needs clearer examples or anti-examples. Type-correction frequency should inform future guide changes.
 
 ---
 
-## Challenge 10: Effects Without a Clear "Phenomenon"
+## Resolved
 
-**Root cause:** Some surface types require a visually identifiable phenomenon to render on — `temporal-decay` needs a trail, `gradient` needs something to put stops on. Some effects produce no such visible path (e.g., a color-only animation, an ambient blur, a textured overlay).
+### Challenge 2: Live Update API Surface Across Libraries
 
-**What breaks:** The manipulation surface cannot render in its primary form. The designer sees a less intuitive fallback.
+**Resolved in 0.5.0 by the CSS binding contract.** MotionWorks no longer requires every library to implement a registration `update()` callback. It writes one CSS custom property and dispatches one standard event; effects translate CSS into their own imperative primitive only when CSS cannot drive them directly.
 
-**Chosen mitigation:**
+### Challenge 4: Framework and Library Agnosticism
 
-Each surface type has a defined fallback for when the phenomenon is not identifiable:
+**Resolved in 0.5.0 by the standalone bundle and schema-only DOM registration.** Any page can load `motionworks.global.js`, register through attributes/JSON, and consume the same CSS helpers. React is a thin convenience and an optional peer rather than the platform boundary.
 
-- `temporal-decay` without a moving element → show a horizontal time bar below the element; drag bar length.
-- `gradient` without a path phenomenon → show a horizontal gradient swatch below the element; drag stops along it.
-- `temporal-response` without visible follow behavior → show a before/after indicator with a gap slider.
+### Challenge 6: Multi-Agent Compatibility
 
-These fallbacks are less good than the primary surface. They are not considered the acceptable default — they are emergency behavior. The agent should be coached (via the system prompt) to prefer effects that have clear spatial or temporal phenomena when possible.
+**Resolved in 0.5.0 by the file-first journal and CLI.** Claude and Codex can be spawned automatically, while any terminal-capable agent can use `changes`, `status`, and `ack`. No agent-specific client protocol is required.
+
+### Challenge 10: Effects Without a Clear “Phenomenon”
+
+**Resolved before 0.5.0 by consolidating scalar editing in the toolkit.** Radius, strength, decay, response, spring, timing, and scalar parameters use perceptual drawers/cursor tools rather than requiring a bespoke visible phenomenon. On-canvas editing is reserved for genuinely spatial path data.

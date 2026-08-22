@@ -11,7 +11,15 @@ export type {
   SpringValue,
   TypeCorrection,
 } from "./types.js";
-export { cssValuesEqual, decodeCssValue, defaultUnitFor, encodeCssValue, formatNumber, KEYWORD_CURVES, parseEasing } from './css-values.js';
+export {
+  cssValuesEqual,
+  decodeCssValue,
+  defaultUnitFor,
+  encodeCssValue,
+  formatNumber,
+  KEYWORD_CURVES,
+  parseEasing,
+} from "./css-values.js";
 export type {
   CommitRequest,
   JournalChange,

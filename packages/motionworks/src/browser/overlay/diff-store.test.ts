@@ -38,6 +38,14 @@ describe("DiffStore", () => {
       expect(listener).not.toHaveBeenCalled();
     });
 
+    it("clears the diff when a later manipulation returns to the original baseline", () => {
+      const store = new DiffStore();
+      store.recordChange("effect-a", "radius", 100, 145);
+      store.recordChange("effect-a", "radius", 100, 100);
+      expect(store.getDiff("effect-a")).toEqual({});
+      expect(store.hasDiff("effect-a")).toBe(false);
+    });
+
     it("uses deep equality for object-valued params (spring)", () => {
       const store = new DiffStore();
       const baseline = { stiffness: 280, damping: 20 };

@@ -1,26 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 
-import type { ParameterType } from '../../../../shared/index.js';
+import type { ParameterType } from "../../../../shared/index.js";
 
-import { useOverlaySession } from '../../context.js';
+import { useOverlaySession } from "../../context.js";
 import {
   COLORS,
   CONTEXT_MENU,
   FONT,
   NUMERIC_EDITOR,
   PANEL,
-} from '../../theme.js';
+} from "../../theme.js";
 
 const ALL_TYPES: ParameterType[] = [
-  'spatial-radius',
-  'spatial-strength',
-  'temporal-decay',
-  'temporal-response',
-  'spring-response',
-  'gradient',
-  'path',
-  'stagger',
-  'scalar',
+  "spatial-radius",
+  "spatial-strength",
+  "temporal-decay",
+  "temporal-response",
+  "spring-response",
+  "gradient",
+  "path",
+  "stagger",
+  "scalar",
 ];
 
 interface Props {
@@ -58,13 +58,13 @@ export function SurfaceContextMenu({
       onClose();
     };
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === "Escape") onClose();
     };
-    document.addEventListener('pointerdown', onDocDown, true);
-    document.addEventListener('keydown', onKey);
+    document.addEventListener("pointerdown", onDocDown, true);
+    document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener('pointerdown', onDocDown, true);
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener("pointerdown", onDocDown, true);
+      document.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
 
@@ -72,7 +72,7 @@ export function SurfaceContextMenu({
     <div
       ref={ref}
       style={{
-        position: 'fixed',
+        position: "fixed",
         left: x,
         top: y,
         zIndex: 10000,
@@ -84,8 +84,8 @@ export function SurfaceContextMenu({
         fontFamily: FONT.family,
         fontSize: FONT.sizeBody,
         color: COLORS.neutralInk,
-        pointerEvents: 'auto',
-        overflow: 'visible',
+        pointerEvents: "auto",
+        overflow: "visible",
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -100,15 +100,15 @@ export function SurfaceContextMenu({
         onMouseEnter={() => setSubmenuOpen(true)}
         onMouseLeave={() => setSubmenuOpen(false)}
         onClick={() => setSubmenuOpen((v) => !v)}
-        style={{ position: 'relative' }}
+        style={{ position: "relative" }}
       >
         Edit parameter type
         <span style={{ opacity: 0.55, marginLeft: 8 }}>▸</span>
         {submenuOpen && (
           <div
             style={{
-              position: 'absolute',
-              left: '100%',
+              position: "absolute",
+              left: "100%",
               top: -1,
               marginLeft: CONTEXT_MENU.submenuIndent,
               minWidth: CONTEXT_MENU.minWidth,
@@ -133,7 +133,7 @@ export function SurfaceContextMenu({
               >
                 <span
                   style={{
-                    display: 'inline-block',
+                    display: "inline-block",
                     width: 12,
                     marginRight: 6,
                     opacity: type === currentType ? 1 : 0,
@@ -141,7 +141,11 @@ export function SurfaceContextMenu({
                 >
                   ✓
                 </span>
-                <code style={{ fontFamily: FONT.mono, fontSize: FONT.sizeSmall }}>{type}</code>
+                <code
+                  style={{ fontFamily: FONT.mono, fontSize: FONT.sizeSmall }}
+                >
+                  {type}
+                </code>
               </MenuItem>
             ))}
           </div>
@@ -169,10 +173,10 @@ function MenuItem({
       {...rest}
       style={{
         padding: CONTEXT_MENU.itemPadding,
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        background: hover ? CONTEXT_MENU.itemHoverBg : 'transparent',
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        background: hover ? CONTEXT_MENU.itemHoverBg : "transparent",
         ...style,
       }}
       onMouseEnter={(e) => {
@@ -205,19 +209,22 @@ export function NumericEditor({
   onCancel,
   step,
 }: NumericEditorProps): React.JSX.Element {
-  const format = step !== undefined && step < 1 ? initial.toFixed(2) : String(Math.round(initial));
+  const format =
+    step !== undefined && step < 1
+      ? initial.toFixed(2)
+      : String(Math.round(initial));
   const [value, setValue] = useState(() => format);
   return (
     <input
       autoFocus
       type="number"
-      step={step ?? 'any'}
+      step={step ?? "any"}
       value={value}
       onFocus={(e) => e.currentTarget.select()}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') onSubmit(value);
-        else if (e.key === 'Escape') onCancel();
+        if (e.key === "Enter") onSubmit(value);
+        else if (e.key === "Escape") onCancel();
       }}
       onBlur={() => onSubmit(value)}
       style={{
@@ -229,7 +236,7 @@ export function NumericEditor({
         borderRadius: NUMERIC_EDITOR.radius,
         background: COLORS.panelBg,
         color: COLORS.neutralInk,
-        outline: 'none',
+        outline: "none",
         boxShadow: PANEL.shadow,
       }}
     />

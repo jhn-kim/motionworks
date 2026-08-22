@@ -1,4 +1,4 @@
-import type { MotionWorksEffect, ParameterType } from '../../shared/index.js';
+import type { MotionWorksEffect, ParameterType } from "../../shared/index.js";
 
 // Tracks designer-chosen parameter type overrides. Lives on the overlay
 // (like DiffStore) rather than in the core state manager because the

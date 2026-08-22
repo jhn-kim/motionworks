@@ -19,9 +19,9 @@ Parameter editing lives in the **toolkit chip** — the frosted-glass bar that m
 
 ### Design principles
 
-**Perceptual, not raw.** Every scalar tool runs on a normalized **0–10 dial**. The mapping to real units is per-type so equal input produces equal *perceived* change: linear for spatial distances and 0–1 fractions, logarithmic for spring physics (the low end is where feel character lives), quadratic for durations and staggers (resolution concentrated in the 100–400ms band where motion actually happens). Real values remain the source of truth everywhere — writeback, the wire, and the agent never see 0–10.
+**Perceptual, not raw.** Every scalar tool runs on a normalized **0–10 dial**. The mapping to real units is per-type so equal input produces equal *perceived* change: linear for spatial distances and 0–1 fractions, logarithmic for spring physics (the low end is where feel character lives), quadratic for durations and staggers (resolution concentrated in the 100–400ms band where motion actually happens). Real values remain the source of truth everywhere — CSS, journal entries, and agents never see 0–10.
 
-**Feedback is immediate.** Every input calls `update()` synchronously with the new value. There is no preview button. The WS mirror is coalesced separately (one message per param per frame).
+**Feedback is immediate.** Every input writes the bound CSS property inline and dispatches `motionworks:change` synchronously. There is no preview button and no per-frame network traffic; effects consume the property directly or refresh through `readParams`/`onParamsChange`.
 
 **Precision is available but secondary.** Right-clicking a row opens a context menu with exact numeric entry (and the parameter-type override, see `OVERLAY.md`).
 
@@ -45,7 +45,7 @@ This is the closest interaction to "the element is the control" for scalar param
 
 ### Numeric slider types
 
-`spatial-radius`, `spatial-strength`, `temporal-decay`, `temporal-response`, `stagger`, `duration`, `scalar` — a slider row in the owning family's drawer, armable as a cursor tool, on the per-type curve described above. Each row carries a short hover hint ("How far the effect reaches", "How slowly the trail fades") so the designer never needs the type vocabulary.
+`spatial-radius`, `spatial-strength`, `temporal-decay`, `temporal-response`, `stagger`, `duration`, `scalar` — a slider row in the owning family's drawer, armable as a cursor tool, on the per-type curve described above. Each row carries a short hover hint ("How far the effect reaches", "How slowly the trail fades") so the designer never needs the type vocabulary. A repeated sequence is registered on its shared container and normally exposes one `stagger` control for the relationship across the group; implementation-level child timings stay hidden unless a child is explicitly registered as an independent effect.
 
 ### `spring-response`
 
@@ -53,11 +53,11 @@ Spring objects (`{ stiffness, damping, mass? }`) expand into **three axis rows**
 
 ### `easing-curve`
 
-An interactive cubic-bezier editor opened from its row in the Feel drawer: the curve drawn with value-0/value-1 gridlines, two draggable control handles connected to the endpoints by stems, the current `(x1, y1, x2, y2)` readout, and a preset row (linear, ease, in, out, in-out, back). `x` is clamped to 0–1; `y` may exceed the range for overshoot/anticipation. Every change calls `update()` immediately.
+An interactive cubic-bezier editor opened from its row in the Feel drawer: the curve drawn with value-0/value-1 gridlines, two draggable control handles connected to the endpoints by stems, the current `(x1, y1, x2, y2)` readout, and a preset row (linear, ease, in, out, in-out, back). `x` is clamped to 0–1; `y` may exceed the range for overshoot/anticipation. Every change encodes and applies the bound CSS value immediately.
 
 ### `gradient`
 
-A gradient editor opened from its row in the Style drawer: the stop sequence rendered as a horizontal bar, stops draggable along it to change their 0–1 fraction, a color input per stop, add/remove stops (minimum 2 remain). Every change sends the full stops array through `update()`.
+A gradient editor opened from its row in the Style drawer: the stop sequence rendered as a horizontal bar, stops draggable along it to change their 0–1 fraction, a color input per stop, add/remove stops (minimum 2 remain). Every change encodes the full stop array into the bound CSS custom property.
 
 ### `path`
 
@@ -78,23 +78,23 @@ The canvas layer runs its rAF clear-and-redraw loop only while a scoped editor h
 
 How a designer watches an animation that doesn't run continuously — entrances that fired on page load, and interaction animations whose real trigger (click) is intercepted by selection.
 
-- **Capability replay:** effects declaring `capabilities: { replay: true }` re-run their animation when `update()` receives the reserved `__motionworksReplay` key (a fresh timestamp per press), using the current uncommitted parameter values.
-- **Simulated press:** effects on clickable elements that *don't* declare the capability get a synthetic `pointerdown`/`mousedown`, held ~140ms, then `pointerup`/`mouseup` — enough to fire press springs. Deliberately no `click` is dispatched: click is the element's real activation (add to cart, navigate), and replay must show the animation without running the behavior. Effects whose animation lives in the click handler itself must declare the capability and re-run the animation from `update()` instead.
+- **Capability replay:** effects declaring `capabilities: { replay: true }` re-run their animation when the registered node receives a bubbling `motionworks:replay` CustomEvent (a fresh timestamp in `detail` per press), using the current uncommitted CSS values.
+- **Simulated press:** effects on clickable elements that *don't* declare the capability get a synthetic `pointerdown`/`mousedown`, held ~140ms, then `pointerup`/`mouseup` — enough to fire press springs. Deliberately no `click` is dispatched: click is the element's real activation (add to cart, navigate), and replay must show the animation without running the behavior. Effects whose animation lives in the click handler itself must declare the capability and re-run the animation from the replay event instead.
 
 ### Compare
 
-A toggle (not a pointer hold — hover- and press-triggered animations need the mouse free while comparing) that temporarily re-applies the pre-manipulation baselines through `update()`, so the designer can A/B their uncommitted changes against the original. Toggling back restores the manipulated values. Diffs are untouched either way.
+A toggle (not a pointer hold — hover- and press-triggered animations need the mouse free while comparing) that temporarily applies the pre-manipulation baselines through the same live CSS path, so the designer can A/B their uncommitted changes against the original. Toggling back restores the manipulated values. Diffs are untouched either way.
 
 ### Apply / Discard
 
-Apply packages the uncommitted diff into a changeset and sends it to the bridge for agent writeback (see `SOURCE_SYNC.md`); the button then shows a "sent, waiting for agent" state until reconciliation. Discard restores every touched parameter to its baseline through `update()` — the on-screen effect visibly resets — and clears the diff.
+Apply packages the uncommitted diff into a journal entry and posts it to the daemon (see `SOURCE_SYNC.md`). The existing handoff slot reflects the entry state: `pending` shows Copy prompt, `agent-working` shows “Agent is applying…” with no button, and `applied` pulses “Applied” until stylesheet reconciliation auto-acknowledges it (with a ten-second local fallback). Discard restores every touched property's prior inline state so the stylesheet baseline is visible again, then clears the diff.
 
 ### Scrubber
 
-Shown only for effects that declare `capabilities: { scrub: true }`. A timeline bar; dragging the playhead sends `update({ __motionworksScrub: timeMs })` and the effect freezes at that offset. Effects without the capability never see the UI.
+Shown only for effects that declare `capabilities: { scrub: true }`. A timeline bar; dragging the playhead dispatches `motionworks:scrub` with the millisecond offset in `detail`, and the effect freezes at that position. Effects without the capability never see the UI.
 
 ---
 
 ## Retired: On-Element Surfaces for Scalar Types
 
-Earlier iterations rendered a bespoke on-element surface per parameter type — a draggable radius circle, force-field arrows for strength, a draggable position-history trail for decay, a lag ghost for response, pull-and-release spring manipulation, gradient stops along the phenomenon, a stagger ghost timeline. The implementations (and their tests) remain in `packages/react/src/overlay/surfaces/` and can be mounted through the same scoped canvas/SVG mechanism the path editor uses, but they are **not part of the current UI**: in practice the toolkit's perceptual sliders plus the cursor tool proved faster and more legible for scalar values, and the on-canvas treatment is reserved for genuinely spatial data (paths today; gradients-along-a-phenomenon is the most likely next candidate). Reviving one of these surfaces is a product decision — update this file and get confirmation first.
+Earlier iterations rendered a bespoke on-element surface per parameter type — a draggable radius circle, force-field arrows for strength, a draggable position-history trail for decay, a lag ghost for response, pull-and-release spring manipulation, gradient stops along the phenomenon, a stagger ghost timeline. The implementations (and their tests) remain in `packages/motionworks/src/browser/overlay/surfaces/` and can be mounted through the same scoped canvas/SVG mechanism the path editor uses, but they are **not part of the current UI**: in practice the toolkit's perceptual sliders plus the cursor tool proved faster and more legible for scalar values, and the on-canvas treatment is reserved for genuinely spatial data (paths today; gradients-along-a-phenomenon is the most likely next candidate). Reviving one of these surfaces is a product decision — update this file and get confirmation first.

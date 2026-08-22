@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
-import { getCanvasRegistry } from './surfaces/shared/canvas-registry.js';
+import { getCanvasRegistry } from "./surfaces/shared/canvas-registry.js";
 
 interface Props {
   active: boolean;
@@ -12,14 +12,17 @@ interface Props {
 // when there is nothing to draw. Individual surfaces contribute draw
 // callbacks via `getCanvasRegistry()`; the layer knows nothing about which
 // surfaces are contributing.
-export function CanvasLayer({ active, hasSelection }: Props): React.JSX.Element {
+export function CanvasLayer({
+  active,
+  hasSelection,
+}: Props): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas === null) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (ctx === null) return;
 
     const resize = (): void => {
@@ -31,12 +34,12 @@ export function CanvasLayer({ active, hasSelection }: Props): React.JSX.Element 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
-    window.addEventListener('resize', resize);
+    window.addEventListener("resize", resize);
 
     if (!active || !hasSelection) {
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
       return () => {
-        window.removeEventListener('resize', resize);
+        window.removeEventListener("resize", resize);
       };
     }
 
@@ -52,7 +55,7 @@ export function CanvasLayer({ active, hasSelection }: Props): React.JSX.Element 
     return () => {
       cancelled = true;
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      window.removeEventListener('resize', resize);
+      window.removeEventListener("resize", resize);
     };
   }, [active, hasSelection]);
 
@@ -60,9 +63,9 @@ export function CanvasLayer({ active, hasSelection }: Props): React.JSX.Element 
     <canvas
       ref={canvasRef}
       style={{
-        position: 'fixed',
+        position: "fixed",
         inset: 0,
-        pointerEvents: 'none',
+        pointerEvents: "none",
         zIndex: 9997,
       }}
     />

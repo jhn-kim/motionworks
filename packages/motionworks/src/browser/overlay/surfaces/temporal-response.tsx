@@ -1,10 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useOverlaySession } from '../context.js';
-import { COLORS, FONT, HANDLES, PANEL, RESPONSE_SURFACE, STROKE } from '../theme.js';
-import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
-import { useCanvasDrawer, useNodeRect } from './shared/hooks.js';
-import type { SurfaceProps } from './shared/props.js';
+import { useOverlaySession } from "../context.js";
+import {
+  COLORS,
+  FONT,
+  HANDLES,
+  PANEL,
+  RESPONSE_SURFACE,
+  STROKE,
+} from "../theme.js";
+import { NumericEditor, SurfaceContextMenu } from "./shared/context-menu.js";
+import { useCanvasDrawer, useNodeRect } from "./shared/hooks.js";
+import type { SurfaceProps } from "./shared/props.js";
 
 // Non-linear gap ↔ response mapping. Response is a lerp factor between 0 and
 // 1 (or a param-max). Larger response → less lag → smaller gap. The curve is
@@ -21,7 +28,11 @@ export function responseFromGap(gap: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export function gapFromResponse(value: number, min: number, max: number): number {
+export function gapFromResponse(
+  value: number,
+  min: number,
+  max: number,
+): number {
   const range = max - min;
   if (range <= 0) return 0;
   const shaped = (value - min) / range;
@@ -72,20 +83,25 @@ export function TemporalResponseSurface({
         event.clientY >= r.top &&
         event.clientY <= r.bottom;
       if (!inside) return;
-      cursorRef.current = { x: event.clientX, y: event.clientY, lastMove: performance.now() };
+      cursorRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+        lastMove: performance.now(),
+      };
       setMotionActive(true);
     };
-    window.addEventListener('pointermove', onMove);
+    window.addEventListener("pointermove", onMove);
     const staleInterval = window.setInterval(() => {
       if (
         cursorRef.current.lastMove === 0 ||
-        performance.now() - cursorRef.current.lastMove > RESPONSE_SURFACE.stationaryPromptMs
+        performance.now() - cursorRef.current.lastMove >
+          RESPONSE_SURFACE.stationaryPromptMs
       ) {
         setMotionActive(false);
       }
     }, 200);
     return () => {
-      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener("pointermove", onMove);
       window.clearInterval(staleInterval);
     };
   }, []);
@@ -148,16 +164,16 @@ export function TemporalResponseSurface({
       };
       const up = (): void => {
         setDragging(false);
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // pointer already released
         }
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [effectId, max, min, paramKey, rect, session],
   );
@@ -193,7 +209,7 @@ export function TemporalResponseSurface({
           fill="rgba(94, 234, 212, 0.001)"
           stroke="none"
           pointerEvents="all"
-          style={{ cursor: dragging ? 'grabbing' : 'grab' }}
+          style={{ cursor: dragging ? "grabbing" : "grab" }}
           onPointerDown={handleGapDrag}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -207,7 +223,9 @@ export function TemporalResponseSurface({
           liveValue={liveValue}
           min={min}
           max={max}
-          onDrag={(newValue) => session.manipulate(effectId, paramKey, roundResponse(newValue))}
+          onDrag={(newValue) =>
+            session.manipulate(effectId, paramKey, roundResponse(newValue))
+          }
           onContextMenu={(x, y) => setMenu({ x, y })}
         />
       )}
@@ -226,9 +244,14 @@ export function TemporalResponseSurface({
           y={cy - 14}
           width={140}
           height={30}
-          style={{ overflow: 'visible' }}
+          style={{ overflow: "visible" }}
         >
-          <NumericEditor initial={liveValue} step={0.01} onSubmit={submitEdit} onCancel={() => setEditing(false)} />
+          <NumericEditor
+            initial={liveValue}
+            step={0.01}
+            onSubmit={submitEdit}
+            onCancel={() => setEditing(false)}
+          />
         </foreignObject>
       )}
       {menu !== null && (
@@ -237,7 +260,7 @@ export function TemporalResponseSurface({
           y={0}
           width={window.innerWidth}
           height={window.innerHeight}
-          style={{ overflow: 'visible', pointerEvents: 'none' }}
+          style={{ overflow: "visible", pointerEvents: "none" }}
         >
           <SurfaceContextMenu
             x={menu.x}
@@ -289,21 +312,24 @@ function ResponseFallback({
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
     const move = (ev: PointerEvent): void => {
-      const clampedX = Math.max(trackX, Math.min(trackX + trackWidth, ev.clientX));
+      const clampedX = Math.max(
+        trackX,
+        Math.min(trackX + trackWidth, ev.clientX),
+      );
       const f = (clampedX - trackX) / trackWidth;
       onDrag(min + f * (max - min));
     };
     const up = (): void => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
       try {
         target.releasePointerCapture(event.pointerId);
       } catch {
         // pointer already released
       }
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   };
 
   return (
@@ -333,7 +359,7 @@ function ResponseFallback({
         fill="rgba(94, 234, 212, 0.001)"
         stroke="none"
         pointerEvents="all"
-        style={{ cursor: 'grab' }}
+        style={{ cursor: "grab" }}
         onPointerDown={onDown}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -353,18 +379,18 @@ function ResponseFallback({
         y={trackY + FALLBACK_HEIGHT / 2 + 8}
         width={trackWidth + 100}
         height={40}
-        style={{ overflow: 'visible', pointerEvents: 'none' }}
+        style={{ overflow: "visible", pointerEvents: "none" }}
       >
         <div
           style={{
             fontFamily: FONT.family,
             fontSize: FONT.sizeSmall,
             color: COLORS.neutralInkMuted,
-            padding: '4px 8px',
+            padding: "4px 8px",
             background: COLORS.panelBg,
             border: `1px solid ${COLORS.panelBorder}`,
             borderRadius: PANEL.radius,
-            display: 'inline-block',
+            display: "inline-block",
           }}
         >
           Move the cursor over this element to feel the response

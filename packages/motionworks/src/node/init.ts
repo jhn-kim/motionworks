@@ -15,7 +15,16 @@ import {
   writeInstructionFile,
   type InstructionFile,
 } from "./claude-md.js";
-import { cyan, dim, gray, green, step, symbols, yellow } from "./ui.js";
+import {
+  brand,
+  dim,
+  gray,
+  green,
+  mutedRed,
+  step,
+  symbols,
+  yellow,
+} from "./ui.js";
 
 /**
  * Cap on how many diff lines `init` prints when replacing an older stanza.
@@ -63,7 +72,7 @@ export async function confirm(
 ): Promise<boolean> {
   const rl = createInterface({ input, output, terminal: false });
   try {
-    const prompt = `${cyan("?")} ${question} ${gray("(y/n)")} `;
+    const prompt = `${brand("?")} ${question} (${green("y")}${gray("/")}${mutedRed("n")}) `;
     const answer = (await rl.question(prompt)).trim().toLowerCase();
     return answer === "y" || answer === "yes";
   } finally {
@@ -235,7 +244,10 @@ async function initFile({
 
   if (cmp === 0) {
     log(
-      step(symbols.skipped, `${dim(path)} stanza already at v${packageVersion}`),
+      step(
+        symbols.skipped,
+        `${dim(path)} stanza already at v${packageVersion}`,
+      ),
     );
     return {
       kind: "skipped-same-version",

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -12,15 +13,20 @@ import type { ParameterType } from "../../shared/index.js";
 import { getBridge } from "../bridge.js";
 import { findInteractiveNode } from "../dom-selector.js";
 import { startAutoDetect } from "./auto-detect.js";
-import { startDomRegistration } from './dom-registration.js';
+import { startDomRegistration } from "./dom-registration.js";
 import { CanvasLayer } from "./canvas-layer.js";
 import { OverlaySessionContext, useOverlaySession } from "./context.js";
 import { type ArmedTool } from "./cursor-tool.js";
 import { humanizeEffectName } from "./display-name.js";
 import { ElementsPanel, LayersPanel, scopedEffects } from "./global-panels.js";
 import { NodeHighlight } from "./highlight.js";
-import { useAgentQueue, useAgentWorking, useConnection, useEntryStatus, usePendingCommit, useSessionState } from "./hooks.js";
-import { ActivationReveal } from "./reveal.js";
+import {
+  useAgentQueue,
+  useConnection,
+  useEntryStatus,
+  usePendingCommit,
+  useSessionState,
+} from "./hooks.js";
 import { curveForType } from "./scale.js";
 import { Scrubber } from "./scrubber.js";
 import { SelectionEngine } from "./selection.js";
@@ -144,13 +150,16 @@ function OverlayShell(): React.JSX.Element {
   // clicks are intercepted there. Interactive overlay pieces (toolbox,
   // scrubber, menus) opt into pointer events individually.
 
-  // While the overlay is active, CSS keyframe animations are auto-registered
-  // as named, selectable, tunable effects (see auto-detect.ts).
+  // Explicit DOM schemas stay registered while the launcher is closed so an
+  // outstanding inline diff can never be mistaken for a fresh CSS baseline
+  // when the toolkit reopens.
+  useEffect(() => startDomRegistration(), []);
+
+  // While the overlay is active, otherwise-unregistered CSS keyframe
+  // animations are auto-registered as selectable effects (see auto-detect.ts).
   useEffect(() => {
     if (!active) return;
-    const stopAuto = startAutoDetect();
-    const stopDom = startDomRegistration();
-    return () => { stopAuto(); stopDom(); };
+    return startAutoDetect();
   }, [active]);
 
   useEffect(() => {
@@ -167,9 +176,6 @@ function OverlayShell(): React.JSX.Element {
         active={active}
         selectedEffectId={selectedEffect?.id ?? null}
       />
-      {/* Remounts per activation, so the inventory flash replays each time
-          the toolkit opens. */}
-      {active ? <ActivationReveal /> : null}
       <Scrubber active={active} selectedEffect={selectedEffect} />
       {phase !== "closed" ? (
         <DynamicToolbox
@@ -231,7 +237,7 @@ const TOOL_HINTS: Partial<Record<ParameterType, string>> = {
   "temporal-decay": "How slowly the trail fades",
   "temporal-response": "How quickly it follows input",
   gradient: "The colors along the motion",
-  path: "The route the element travels",
+  path: "Edit motion path directly on canvas",
   stagger: "The delay between each element",
   duration: "How long the motion runs",
   "easing-curve": "How it speeds up and settles",
@@ -293,7 +299,48 @@ interface DynamicToolboxProps {
   onClose: () => void;
 }
 
-function DynamicToolbox({
+export function resolveVerbAvailability({
+  hasSelection,
+  hasDiff,
+  hasPendingCorrections,
+  hasCommitDelta,
+  editing,
+  appliedMarker,
+  committedDiff,
+  pendingApply,
+  entryApplied,
+}: {
+  hasSelection: boolean;
+  hasDiff: boolean;
+  hasPendingCorrections: boolean;
+  hasCommitDelta: boolean;
+  editing: boolean;
+  appliedMarker: boolean;
+  committedDiff: boolean;
+  pendingApply: boolean;
+  entryApplied: boolean;
+}): { visible: boolean; localLive: boolean; applyLive: boolean } {
+  const hasLocalIntent = hasDiff || hasPendingCorrections;
+  // Once the current revision is already represented by the journal, none
+  // of the local verbs should imply that it is still awaiting a decision.
+  // A later slider move changes the diff version / commit delta and unlocks
+  // the verbs again for that genuinely new revision.
+  const submittedCurrentIntent =
+    !hasCommitDelta || (committedDiff && (pendingApply || entryApplied));
+  const localLive = hasSelection && hasLocalIntent && !submittedCurrentIntent;
+  // Verbs act on an uncommitted local intent. Once the entry is in the
+  // journal (agent-working, applied, or pending-with-error) there is
+  // nothing for Apply or Discard to do — revert lives in the CLI. Ghost
+  // them only while a tool panel or editor is open, where the row's
+  // width needs to stay frozen, and during the transient applied flash.
+  return {
+    visible: hasSelection && (localLive || editing || appliedMarker),
+    localLive,
+    applyLive: localLive,
+  };
+}
+
+export function DynamicToolbox({
   selectedEffect,
   closing = false,
   dock,
@@ -302,21 +349,75 @@ function DynamicToolbox({
 }: DynamicToolboxProps): React.JSX.Element {
   const session = useOverlaySession();
   const agentQueue = useAgentQueue();
-  const agentWorking = useAgentWorking();
+  const queueSignature = agentQueue.map((entry) => entry.signature).join("|");
+  const queueChangeCount = agentQueue.reduce(
+    (total, entry) => total + entry.changeCount,
+    0,
+  );
+  const [agentQuip, setAgentQuip] = useState<{
+    key: number;
+    text: string;
+  } | null>(null);
+  const [copiedQueueSignature, setCopiedQueueSignature] = useState<
+    string | null
+  >(null);
+  const agentPromptCopied =
+    queueSignature !== "" && copiedQueueSignature === queueSignature;
+  const quipKeyRef = useRef(0);
+  const quipTimerRef = useRef<number | null>(null);
+  const showAgentQuip = useCallback((text: string, duration = 2400): void => {
+    quipKeyRef.current += 1;
+    setAgentQuip({ key: quipKeyRef.current, text });
+    if (quipTimerRef.current !== null)
+      window.clearTimeout(quipTimerRef.current);
+    quipTimerRef.current = window.setTimeout(() => {
+      setAgentQuip(null);
+      quipTimerRef.current = null;
+    }, duration);
+  }, []);
+  useEffect(
+    () => () => {
+      if (quipTimerRef.current !== null)
+        window.clearTimeout(quipTimerRef.current);
+    },
+    [],
+  );
+  // Drain any lingering copy-feedback quip once the queue empties so a
+  // stale "Prompt copied" toast doesn't outlive the button that spawned it.
+  useEffect(() => {
+    if (queueChangeCount !== 0) return;
+    setAgentQuip(null);
+    if (quipTimerRef.current !== null) {
+      window.clearTimeout(quipTimerRef.current);
+      quipTimerRef.current = null;
+    }
+  }, [queueChangeCount]);
   const effectId = selectedEffect?.id ?? null;
   const entryStatus = useEntryStatus(effectId);
   const pendingApply = usePendingCommit(effectId);
   const [appliedMarker, setAppliedMarker] = useState(false);
   const commitVersionRef = useRef<number | null>(null);
+  const appliedDiffRef = useRef<string | null>(null);
+  const handledAppliedRef = useRef(false);
   useEffect(() => {
-    if (entryStatus !== 'applied' || commitVersionRef.current !== session.diffs.getVersion()) {
+    if (entryStatus !== "applied") {
+      handledAppliedRef.current = false;
       setAppliedMarker(false);
       return;
     }
+    if (
+      effectId === null ||
+      pendingApply ||
+      commitVersionRef.current === null ||
+      handledAppliedRef.current
+    )
+      return;
+    handledAppliedRef.current = true;
+    appliedDiffRef.current = JSON.stringify(session.diffs.getDiff(effectId));
     setAppliedMarker(true);
     const timer = window.setTimeout(() => setAppliedMarker(false), 10_000);
     return () => window.clearTimeout(timer);
-  }, [effectId, entryStatus, session]);
+  }, [effectId, entryStatus, pendingApply, session]);
 
   // Which family's slider panel is expanded (one at a time), and which
   // non-scalar editor (gradient / easing curve / path) is showing.
@@ -330,6 +431,8 @@ function DynamicToolbox({
 
   useEffect(() => {
     commitVersionRef.current = null;
+    appliedDiffRef.current = null;
+    handledAppliedRef.current = false;
     setAppliedMarker(false);
     setComparing(false);
     // Everything tool-shaped resets on selection change — panel, editor,
@@ -354,14 +457,6 @@ function DynamicToolbox({
     };
   }, [openFamily, openEditor]);
 
-  useEffect(() => {
-    if (!comparing || effectId === null) return;
-    session.holdBaseline(effectId, true);
-    return () => {
-      session.holdBaseline(effectId, false);
-    };
-  }, [comparing, effectId, session]);
-
   // Global (selection-independent) modes.
   const [showLayers, setShowLayers] = useState(false);
 
@@ -381,8 +476,14 @@ function DynamicToolbox({
     () => 0,
   );
   useEffect(() => {
-    if (appliedMarker && commitVersionRef.current !== diffVersion) setAppliedMarker(false);
-  }, [appliedMarker, diffVersion]);
+    if (
+      appliedMarker &&
+      effectId !== null &&
+      session.diffs.hasDiff(effectId) &&
+      appliedDiffRef.current !== JSON.stringify(session.diffs.getDiff(effectId))
+    )
+      setAppliedMarker(false);
+  }, [appliedMarker, diffVersion, effectId, session]);
   useSyncExternalStore(
     (l) => session.typeOverrides.subscribe(l),
     () => session.typeOverrides.getVersion(),
@@ -394,6 +495,7 @@ function DynamicToolbox({
   if (selectedEffect !== null) {
     const diff = session.diffs.getDiff(selectedEffect.id);
     for (const [paramKey, param] of Object.entries(selectedEffect.params)) {
+      if (!param.bound) continue;
       const effectiveType =
         session.resolvedType(selectedEffect.id, paramKey) ?? param.type;
       const paramDiff = diff[paramKey];
@@ -404,11 +506,6 @@ function DynamicToolbox({
     }
   }
 
-  const hasDiff =
-    selectedEffect !== null && session.diffs.hasDiff(selectedEffect.id);
-  const hasPendingCorrections =
-    selectedEffect !== null && session.hasPendingCorrections(selectedEffect.id);
-
   const sessionState = useSessionState();
   const scoped =
     selectedEffect === null
@@ -416,8 +513,38 @@ function DynamicToolbox({
       : scopedEffects(sessionState.effects, selectedEffect.id, (id, key) =>
           session.resolvedType(id, key),
         );
+  const scopedEffectIds = scoped.map(({ effect }) => effect.id);
+  const changedEffectIds = scopedEffectIds.filter(
+    (id) => session.diffs.hasDiff(id) || session.hasPendingCorrections(id),
+  );
+  const hasDiff = scopedEffectIds.some((id) => session.diffs.hasDiff(id));
+  const hasPendingCorrections = scopedEffectIds.some((id) =>
+    session.hasPendingCorrections(id),
+  );
+  const hasCommitDelta = changedEffectIds.some((id) =>
+    session.hasCommitDelta(id),
+  );
+  const pendingApplyInScope = scopedEffectIds.some((id) =>
+    session.isCommitPending(id),
+  );
+  const appliedEntryInScope =
+    changedEffectIds.length > 0 &&
+    changedEffectIds.every((id) => session.getEntryStatus(id) === "applied");
+  const changedEffectSignature = changedEffectIds.join("|");
+  const comparedEffectIds = scopedEffectIds.filter((id) =>
+    session.diffs.hasDiff(id),
+  );
+  const comparedEffectSignature = comparedEffectIds.join("|");
   const timingInScope = scoped.some((e) => e.timingParams.length > 0);
   const effectCount = sessionState.effects.length;
+
+  useEffect(() => {
+    if (!comparing || comparedEffectIds.length === 0) return;
+    for (const id of comparedEffectIds) session.holdBaseline(id, true);
+    return () => {
+      for (const id of comparedEffectIds) session.holdBaseline(id, false);
+    };
+  }, [comparing, comparedEffectSignature, session]);
 
   const tools = useMemo<Tool[]>(() => {
     const hasSelection = selectedEffect !== null;
@@ -443,10 +570,20 @@ function DynamicToolbox({
     // first edit lights them up in place instead of shifting the layout.
     const editing = openFamily !== null || openEditor !== null;
     const committedDiff = commitVersionRef.current === diffVersion;
-    const suppressed = committedDiff && (pendingApply || entryStatus === 'applied');
-    const verbsVisible =
-      hasSelection && (hasDiff || hasPendingCorrections || editing || appliedMarker);
-    const verbsLive = hasSelection && (hasDiff || hasPendingCorrections) && !suppressed;
+    const verbAvailability = resolveVerbAvailability({
+      hasSelection,
+      hasDiff,
+      hasPendingCorrections,
+      hasCommitDelta,
+      editing,
+      appliedMarker,
+      committedDiff,
+      pendingApply: pendingApplyInScope,
+      entryApplied: appliedEntryInScope,
+    });
+    const verbsVisible = verbAvailability.visible;
+    const localVerbsLive = verbAvailability.localLive;
+    const applyLive = verbAvailability.applyLive;
     // Replay: a capability-declared replay wins (the effect re-runs itself
     // via the reserved key). Otherwise, effects on clickable elements get a
     // simulated press — selection swallows genuine clicks, so this is the
@@ -478,55 +615,99 @@ function DynamicToolbox({
         },
       });
     }
-    if (verbsVisible) {
+    if (verbsVisible && selectedEffect !== null) {
       result.push({
         id: "compare",
-        label: !verbsLive
+        label: !localVerbsLive
           ? "Compare — make a change first"
           : comparing
             ? "Showing original — click to see your changes"
             : "Compare with original",
         kind: "verb",
         icon: comparing ? ICONS.compareActive : ICONS.compare,
-        disabled: !verbsLive,
+        disabled: !localVerbsLive,
         selected: comparing,
         onClick: () => {
           setComparing((v) => !v);
         },
       });
     }
-    if (verbsVisible) {
+    if (verbsVisible && selectedEffect !== null) {
       result.push(
         {
           id: "garbage",
-          label: verbsLive
+          label: localVerbsLive
             ? "Discard changes"
             : "Discard — make a change first",
           kind: "verb",
           icon: ICONS.garbage,
           tint: "rgb(255, 118, 108)",
           hoverColor: "rgb(255, 158, 148)",
-          disabled: !verbsLive,
+          disabled: !localVerbsLive,
           selected: false,
           onClick: () => {
-            session.discard(selectedEffect.id);
+            // Discard always returns the canvas and toolbar to the edited
+            // view. Otherwise Compare can remain visually selected after
+            // its diff disappears, leaving a disabled active-looking icon.
+            setComparing(false);
+            for (const id of changedEffectIds) session.discard(id);
           },
         },
         {
           id: "apply",
-          label: appliedMarker ? "Applied" : verbsLive ? "Apply changes" : "Apply — make a change first",
+          label: appliedMarker
+            ? "Applied"
+            : applyLive
+              ? "Apply changes"
+              : pendingApplyInScope && !hasCommitDelta
+                ? "Apply — changes already queued"
+                : "Apply — make a change first",
           kind: "verb",
           icon: ICONS.apply,
           tint: "rgb(126, 224, 140)",
           hoverColor: "rgb(168, 242, 180)",
-          disabled: !verbsLive || appliedMarker,
+          disabled: !applyLive || appliedMarker,
           selected: appliedMarker,
           pulse: appliedMarker,
           onClick: () => {
-            if (session.commit(selectedEffect.id)) commitVersionRef.current = session.diffs.getVersion();
+            let committed = false;
+            for (const id of changedEffectIds) {
+              if (session.commit(id)) committed = true;
+            }
+            if (committed) {
+              commitVersionRef.current = session.diffs.getVersion();
+              appliedDiffRef.current = null;
+              handledAppliedRef.current = false;
+              setAppliedMarker(false);
+            }
           },
         },
       );
+    }
+    if (agentQueue.length > 0 && !agentPromptCopied) {
+      result.push({
+        id: "agent",
+        label: agentPromptCopied
+          ? "Prompt copied"
+          : "Copy prompt for your coding agent",
+        hint: `${String(queueChangeCount)} ${queueChangeCount === 1 ? "edit" : "edits"} couldn’t be applied directly`,
+        kind: "verb",
+        icon: ICONS.agent,
+        tint: "#faea37",
+        hoverColor: "#faea37",
+        selected: agentPromptCopied,
+        pulse: agentPromptCopied,
+        onClick: () => {
+          void session.copyAgentPrompt().then((copied) => {
+            if (copied) {
+              setCopiedQueueSignature(queueSignature);
+              showAgentQuip("Prompt copied", 1200);
+            } else {
+              showAgentQuip("Couldn’t copy prompt", 1800);
+            }
+          });
+        },
+      });
     }
 
     // Layers/browse is always present: with a selection it scopes to the
@@ -556,6 +737,7 @@ function DynamicToolbox({
     const presentTypes = new Set<ParameterType>();
     if (hasSelection) {
       for (const [paramKey, param] of Object.entries(selectedEffect.params)) {
+        if (!param.bound) continue;
         presentTypes.add(
           session.resolvedType(selectedEffect.id, paramKey) ?? param.type,
         );
@@ -599,14 +781,22 @@ function DynamicToolbox({
     openEditor,
     hasDiff,
     hasPendingCorrections,
+    hasCommitDelta,
     comparing,
     showLayers,
     effectCount,
     timingInScope,
     appliedMarker,
     diffVersion,
-    pendingApply,
+    pendingApplyInScope,
     entryStatus,
+    appliedEntryInScope,
+    changedEffectSignature,
+    agentQueue.length,
+    agentPromptCopied,
+    queueChangeCount,
+    queueSignature,
+    showAgentQuip,
     onClose,
   ]);
 
@@ -624,7 +814,7 @@ function DynamicToolbox({
       const timeTypeCounts = new Map<ParameterType, number>();
       for (const { effect, timingParams } of scoped) {
         for (const paramKey of timingParams) {
-          if (effect.params[paramKey] === undefined) continue;
+          if (effect.params[paramKey]?.bound !== true) continue;
           const type =
             session.resolvedType(effect.id, paramKey) ??
             effect.params[paramKey]!.type;
@@ -634,7 +824,7 @@ function DynamicToolbox({
       for (const { effect, timingParams } of scoped) {
         for (const paramKey of timingParams) {
           const param = effect.params[paramKey];
-          if (param === undefined) continue;
+          if (param === undefined || !param.bound) continue;
           const type = session.resolvedType(effect.id, paramKey) ?? param.type;
           const bounds = sliderBoundsFor(param, type);
           const own = effect.id === selectedEffect.id;
@@ -772,9 +962,6 @@ function DynamicToolbox({
   };
 
   const openPanels: React.ReactNode[] = [];
-  if (agentWorking || agentQueue.length > 0) {
-    openPanels.push(<AgentHandoffNotice key="__agent" queue={agentQueue} working={agentWorking} />);
-  }
   // The layers button toggles the navigator: the page-wide inventory when
   // nothing is selected, the selection-scoped layers list otherwise.
   if (showLayers) {
@@ -864,37 +1051,42 @@ function DynamicToolbox({
           setShowLayers(false);
         }}
         panels={openPanels.length > 0 ? openPanels : null}
+        sidecar={
+          agentQuip === null
+            ? null
+            : {
+                anchorId: "agent",
+                node: (
+                  <AgentReviewQuip key={agentQuip.key} text={agentQuip.text} />
+                ),
+              }
+        }
         closing={closing}
       />
     </>
   );
 }
 
-function AgentHandoffNotice({
-  queue,
-  working,
-}: {
-  queue: { effectId: string; effectName: string }[];
-  working: boolean;
-}): React.JSX.Element {
-  const session = useOverlaySession();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1600);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-  const names = queue.map((item) => humanizeEffectName(item.effectName)).join(', ');
+export function AgentReviewQuip({ text }: { text: string }): React.JSX.Element {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 12px', fontSize: 12, lineHeight: 1.35, whiteSpace: 'nowrap' }}>
-      <span style={{ color: 'rgba(255, 255, 255, 0.9)' }}>
-        {working ? <><span aria-hidden="true" style={{ display: 'inline-block', marginRight: 7, animation: 'ms-ico-spin 900ms linear infinite' }}>◌</span>Agent is applying…</> : <>{queue.length === 1 ? '1 change needs' : `${String(queue.length)} changes need`} your agent{names === '' ? null : <span style={{ color: 'rgba(255, 255, 255, 0.55)' }}> — {names}</span>}</>}
-      </span>
-      {!working && queue.length > 0 ? (
-        <button type="button" onClick={() => { void session.copyAgentPrompt().then(setCopied); }} style={{ border: 'none', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: copied ? 'rgb(126, 224, 140)' : 'rgba(255, 255, 255, 0.92)', background: GLASS.fill, whiteSpace: 'nowrap' }}>
-          {copied ? 'Copied ✓' : 'Copy prompt'}
-        </button>
-      ) : null}
+    <div
+      style={{
+        padding: "8px 11px",
+        border: GLASS.border,
+        borderRadius: GLASS.radiusSmall,
+        background: GLASS.background,
+        boxShadow: GLASS.shadow,
+        backdropFilter: GLASS.backdrop,
+        WebkitBackdropFilter: GLASS.backdrop,
+        color: "rgba(255, 255, 255, 0.9)",
+        fontFamily: "ui-sans-serif, -apple-system, system-ui, sans-serif",
+        fontSize: 12,
+        lineHeight: 1.2,
+        whiteSpace: "nowrap",
+        animation: "ms-agent-quip 2400ms cubic-bezier(0.3, 0.9, 0.3, 1) both",
+      }}
+    >
+      {text}
     </div>
   );
 }

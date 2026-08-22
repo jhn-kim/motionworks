@@ -10,7 +10,7 @@ MotionWorks is a **direct-manipulation motion design layer for developer project
 
 It installs into a running local development project — e.g., a React app at `localhost:3000` — and renders a visual overlay on top of the actual running product. Designers use it to refine motion: springs, trails, trajectories, timing, influence radii, color gradients along moving phenomena. Refinement happens on the running product itself — selecting the real elements, adjusting parameters on a perceptual dial, replaying animations, and comparing against the original — not in a separate design environment.
 
-MotionWorks is not a standalone application. It is a development tool that sits between a coding agent (Claude Code, Codex, or similar) and the running application. It captures perceptual design decisions — "less floaty," "shorter trail," "more snap" — and communicates them back to the coding agent as precise parameter changes, which the agent then writes into source code.
+MotionWorks is not a standalone application. It is a development tool that sits between a coding agent (Claude Code, Codex, or similar) and the running application. It captures perceptual design decisions — "less floaty," "shorter trail," "more snap" — and records them as precise parameter changes. The daemon writes an unambiguous CSS declaration directly or delegates the bounded source edit to an agent.
 
 ---
 
@@ -48,7 +48,7 @@ Motion is perceptual. A designer often cannot know whether something is right un
 
 **Not an AI animation generator.** MotionWorks does not generate motion effects. The coding agent generates them. MotionWorks refines what the agent created. Conflating the two would dilute the product's focus.
 
-**Not a replacement for the coding agent.** The agent continues to write all implementation code, choose animation libraries, handle complex or creative effects, and edit source files. MotionWorks never edits source files directly. It sends refined parameter values back to the agent and lets the agent do the writing.
+**Not a replacement for the coding agent.** The agent continues to write implementation code, choose animation libraries, handle complex or creative effects, and resolve ambiguous source edits. MotionWorks's direct writer is deliberately narrow: it may replace only one uniquely identified CSS declaration with the designer-approved value. It does not refactor, generate effects, or infer broader changes.
 
 **Not a tool that reimplements the interface.** Tools like Figma or Framer require the designer to rebuild the interface in a separate environment. MotionWorks works on the actual running product in the actual browser. The element being manipulated is the real component in the real application — not a proxy, not a preview, not a simulation.
 
@@ -83,7 +83,7 @@ A designer or developer working in an AI-assisted ("vibe coding") workflow who:
 - Uses a coding agent to build motion-heavy UIs
 - Needs precise control over perceptual qualities
 - Currently loses time in the describe → watch → re-describe loop
-- Works in a React project running locally
+- Works on a locally running web project, with or without React
 
 ---
 
@@ -91,11 +91,11 @@ A designer or developer working in an AI-assisted ("vibe coding") workflow who:
 
 What is built today:
 
-- **Framework:** React only (`@motionworks/react`, React 19). The framework-agnostic contract — types, validation, state management, the WebSocket bridge server — lives in `@motionworks/core` so Vue and Svelte wrappers are possible later; they are not built.
-- **Agent integration:** Claude Code via MCP (`motionworks`) is the primary path and the only path where the full workflow — schema emission, live manipulation, type corrections, and source writeback — operates reliably. A file-based fallback (`motionworks-state.json`) exists and is active only until an MCP client connects, but it is meaningfully weaker: it requires the developer to control the agent's system prompt, has no push notification when changes arrive, and does not carry type corrections or source hints. Agents running with a fixed provider-managed system prompt that the developer cannot modify are effectively read-only. Do not design features assuming parity between the MCP and file-based paths. See `AGENT_INTEGRATION.md` → "What the file-based path cannot do".
-- **Effect detection:** Two paths. Primary: explicit registration by the coding agent (`useMotionWorks()` calls in generated code). Secondary: while the overlay is open, running CSS `@keyframes` animations are auto-detected via `document.getAnimations()` and registered as selectable effects with editable duration, delay, and easing (see `SCHEMA.md` → "What Happens Without a Schema"). Heuristic detection of Framer Motion, GSAP, and react-spring is not built.
+- **Frameworks:** One `motionworks` package supports any local web page. React 19 projects use the thin `motionworks/react` hook and provider; framework-free pages load the standalone script and register with `data-motionworks` or JSON schema blocks. React and ReactDOM are optional peers.
+- **Agent integration:** State is file-first. The daemon journals Apply operations in `.motionworks/changes.json`, records the current selection in `.motionworks/selected.json`, and exposes both through HTTP and the `changes`, `status`, and `ack` CLI commands. When direct CSS writeback is ambiguous, it can spawn Claude or Codex automatically; otherwise the overlay provides a Copy prompt for manual handoff.
+- **Effect detection:** Two paths. Primary: schema-only registration through `useMotionWorks()`, `data-motionworks`, or an `application/motionworks+json` block. Secondary: while the overlay is open, running CSS `@keyframes` animations are auto-detected via `document.getAnimations()` and registered as selectable effects with editable duration, delay, and easing (see `SCHEMA.md` → "What Happens Without a Schema"). Heuristic detection of Framer Motion, GSAP, and react-spring is not built.
 - **Editing surfaces:** The toolkit chip with its four parameter families, perceptual sliders, cursor tool, gradient and easing editors, and the on-canvas path editor. Defined in `MANIPULATION_SURFACES.md`; no new surface types should be added without updating that file and `SCHEMA.md` together.
-- **Source writeback:** Communicated via MCP or file; the agent performs the actual source edit. MotionWorks does not parse or write source files directly.
+- **Source writeback:** Adjustable values live in CSS custom properties. On Apply, MotionWorks first writes a uniquely identifiable declaration itself. If it cannot do so safely, an auto-agent edits only the listed declaration; if no agent succeeds, the journal entry remains pending for manual agent writeback and acknowledgment.
 - **Demo:** a local development harness (`examples/demo`, Next.js 15, port 3001) exercises every registration path. It is not committed to the public repository; a rebuilt demo will be added later.
 
 Explicitly out of scope: multi-user collaboration, cloud-hosted effects library, animation export, non-localhost deployments, mobile gesture input.

@@ -8,12 +8,16 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import type { PathPoint } from "../../../shared/index.js";
+import {
+  cssValuesEqual,
+  encodeCssValue,
+  type PathPoint,
+} from "../../../shared/index.js";
 
 import { useOverlaySession } from "../context.js";
 import { COLORS, FONT, HANDLES, KNOB, PATH_SURFACE, STROKE } from "../theme.js";
 import { SurfaceContextMenu } from "./shared/context-menu.js";
-import { useCanvasDrawer, useNodeRect } from "./shared/hooks.js";
+import { useCanvasDrawer, useRestingNodeRect } from "./shared/hooks.js";
 import type { SurfaceProps } from "./shared/props.js";
 import { HoverChip } from "../toolbox.js";
 
@@ -102,6 +106,29 @@ export function toScreen(pt: Pt, rect: DOMRect): Pt {
 
 export function fromScreen(screen: Pt, rect: DOMRect): Pt {
   return { x: screen.x - rect.left, y: screen.y - rect.top };
+}
+
+// CSS offset-path coordinates are resolved against the moving element's
+// containing block, which is often a stationary wrapper registered with
+// MotionWorks. Resolve that host automatically so the canvas guide and the
+// browser's actual path share an origin. Custom JS-driven paths have no CSS
+// consumer and intentionally fall back to the registered element.
+export function pathCoordinateNode(
+  node: HTMLElement,
+  path: PathPoint[],
+): HTMLElement {
+  const expected = encodeCssValue("path", path, "");
+  const candidates = [
+    node,
+    ...Array.from(node.querySelectorAll<HTMLElement>("*")),
+  ];
+  for (const candidate of candidates) {
+    const cssPath = getComputedStyle(candidate).getPropertyValue("offset-path");
+    if (!cssValuesEqual("path", cssPath, expected)) continue;
+    if (candidate.offsetParent instanceof HTMLElement)
+      return candidate.offsetParent;
+  }
+  return node;
 }
 
 function lerp(a: Pt, b: Pt, t: number): Pt {
@@ -292,7 +319,11 @@ export function PathSurface({
   node,
 }: Props): React.JSX.Element | null {
   const session = useOverlaySession();
-  const rect = useNodeRect(node);
+  const coordinateNode = useMemo(
+    () => pathCoordinateNode(node, liveValue),
+    [node, liveValue],
+  );
+  const rect = useRestingNodeRect(coordinateNode);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [stopHover, setStopHover] = useState<StopHover | null>(null);
   const rectRef = useRef(rect);

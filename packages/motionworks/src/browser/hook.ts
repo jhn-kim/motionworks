@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 
-import type { MotionWorksRegistration } from '../shared/index.js';
+import type { MotionWorksRegistration } from "../shared/index.js";
 
-import { getBridge } from './bridge.js';
-import { allocateEffectId, slugify } from './ids.js';
+import { getBridge } from "./bridge.js";
+import { allocateEffectId, slugify } from "./ids.js";
 
-const IS_DEV = process.env.NODE_ENV === 'development';
+const IS_DEV = process.env.NODE_ENV === "development";
 
 function fingerprintRegistration(reg: MotionWorksRegistration): string {
   const parts: string[] = [reg.name];
   const keys = Object.keys(reg.params).sort();
   for (const key of keys) {
     const p = reg.params[key];
-    parts.push(key, p?.type ?? '', p?.var ?? '');
+    parts.push(key, p?.type ?? "", p?.var ?? "");
   }
-  return parts.join('|');
+  return parts.join("|");
 }
 
 // This hook is imported statically by application components, so its module
@@ -47,7 +47,9 @@ export function useMotionWorks<T extends Element>(
     const node = (ref.current as unknown as HTMLElement | null) ?? null;
     if (node === null) return;
     const slug = slugify(current.name);
-    const id = idRef.current ?? allocateEffectId(slug, node, bridge.getAllNodes());
+    const id = idRef.current?.startsWith(`${slug}#`)
+      ? idRef.current
+      : allocateEffectId(slug, node, bridge.getAllNodes());
     idRef.current = id;
 
     bridge.register(id, node, current);

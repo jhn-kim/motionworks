@@ -1,36 +1,44 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { SpringValue } from '../../../shared/index.js';
+import type { SpringValue } from "../../../shared/index.js";
 
-import { useOverlaySession } from '../context.js';
-import { COLORS, FONT, HANDLES, SPRING_SURFACE, STROKE } from '../theme.js';
-import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
-import { useCanvasDrawer, useNodeRect } from './shared/hooks.js';
-import type { SurfaceProps } from './shared/props.js';
+import { useOverlaySession } from "../context.js";
+import { COLORS, FONT, HANDLES, SPRING_SURFACE, STROKE } from "../theme.js";
+import { NumericEditor, SurfaceContextMenu } from "./shared/context-menu.js";
+import { useCanvasDrawer, useNodeRect } from "./shared/hooks.js";
+import type { SurfaceProps } from "./shared/props.js";
 
 // Normalises a single-number spring param to a {stiffness, damping, mass?}
 // object using the defaults. Exposed so tests can pin down the conversion.
 export function toSpringValue(value: unknown): SpringValue {
-  if (typeof value === 'number') {
+  if (typeof value === "number") {
     // A normalised scalar 0–1: map to a natural stiffness/damping curve so
     // 0 = floaty, 1 = crisp.
     const t = Math.max(0, Math.min(1, value));
     return {
       stiffness:
         SPRING_SURFACE.stiffnessRange.min +
-        t * (SPRING_SURFACE.stiffnessRange.max - SPRING_SURFACE.stiffnessRange.min),
+        t *
+          (SPRING_SURFACE.stiffnessRange.max -
+            SPRING_SURFACE.stiffnessRange.min),
       damping:
         SPRING_SURFACE.dampingRange.min +
         t * (SPRING_SURFACE.dampingRange.max - SPRING_SURFACE.dampingRange.min),
       mass: SPRING_SURFACE.massRange.default,
     };
   }
-  if (typeof value === 'object' && value !== null) {
+  if (typeof value === "object" && value !== null) {
     const v = value as Partial<SpringValue>;
     return {
-      stiffness: typeof v.stiffness === 'number' ? v.stiffness : SPRING_SURFACE.stiffnessRange.default,
-      damping: typeof v.damping === 'number' ? v.damping : SPRING_SURFACE.dampingRange.default,
-      ...(typeof v.mass === 'number' ? { mass: v.mass } : {}),
+      stiffness:
+        typeof v.stiffness === "number"
+          ? v.stiffness
+          : SPRING_SURFACE.stiffnessRange.default,
+      damping:
+        typeof v.damping === "number"
+          ? v.damping
+          : SPRING_SURFACE.dampingRange.default,
+      ...(typeof v.mass === "number" ? { mass: v.mass } : {}),
     };
   }
   return {
@@ -100,7 +108,7 @@ export function SpringResponseSurface({
   useEffect(() => {
     return () => {
       // On unmount / re-select, restore the element transform.
-      node.style.transform = '';
+      node.style.transform = "";
     };
   }, [node]);
 
@@ -115,8 +123,24 @@ export function SpringResponseSurface({
       last = now;
       const s = springRef.current;
       const mass = s.mass ?? SPRING_SURFACE.massRange.default;
-      const stepX = springStep(posRef.current.x, velRef.current.x, 0, s.stiffness, s.damping, mass, dt);
-      const stepY = springStep(posRef.current.y, velRef.current.y, 0, s.stiffness, s.damping, mass, dt);
+      const stepX = springStep(
+        posRef.current.x,
+        velRef.current.x,
+        0,
+        s.stiffness,
+        s.damping,
+        mass,
+        dt,
+      );
+      const stepY = springStep(
+        posRef.current.y,
+        velRef.current.y,
+        0,
+        s.stiffness,
+        s.damping,
+        mass,
+        dt,
+      );
       posRef.current = { x: stepX.pos, y: stepY.pos };
       velRef.current = { x: stepX.vel, y: stepY.vel };
       applyTransform();
@@ -160,8 +184,8 @@ export function SpringResponseSurface({
       const up = (): void => {
         draggingRef.current = false;
         setDragging(false);
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
@@ -169,8 +193,8 @@ export function SpringResponseSurface({
         }
         runSim();
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [applyTransform, rect, runSim],
   );
@@ -213,8 +237,10 @@ export function SpringResponseSurface({
       const startS = spring.stiffness;
       const move = (ev: PointerEvent): void => {
         const dx = ev.clientX - startX;
-        const range = SPRING_SURFACE.stiffnessRange.max - SPRING_SURFACE.stiffnessRange.min;
-        const next = startS + (dx / SPRING_SURFACE.stiffnessHandleOffset) * range;
+        const range =
+          SPRING_SURFACE.stiffnessRange.max - SPRING_SURFACE.stiffnessRange.min;
+        const next =
+          startS + (dx / SPRING_SURFACE.stiffnessHandleOffset) * range;
         const clamped = Math.max(
           SPRING_SURFACE.stiffnessRange.min,
           Math.min(SPRING_SURFACE.stiffnessRange.max, next),
@@ -222,16 +248,16 @@ export function SpringResponseSurface({
         commitSpring({ stiffness: Math.round(clamped) });
       };
       const up = (): void => {
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // pointer already released
         }
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [commitSpring, rect, spring.stiffness],
   );
@@ -248,22 +274,26 @@ export function SpringResponseSurface({
       const move = (ev: PointerEvent): void => {
         // Up = more damping (less oscillation).
         const dy = startY - ev.clientY;
-        const range = SPRING_SURFACE.dampingRange.max - SPRING_SURFACE.dampingRange.min;
+        const range =
+          SPRING_SURFACE.dampingRange.max - SPRING_SURFACE.dampingRange.min;
         const next = startD + (dy / SPRING_SURFACE.dampingHandleOffset) * range;
-        const clamped = Math.max(SPRING_SURFACE.dampingRange.min, Math.min(SPRING_SURFACE.dampingRange.max, next));
+        const clamped = Math.max(
+          SPRING_SURFACE.dampingRange.min,
+          Math.min(SPRING_SURFACE.dampingRange.max, next),
+        );
         commitSpring({ damping: Math.round(clamped * 10) / 10 });
       };
       const up = (): void => {
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // pointer already released
         }
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [commitSpring, rect, spring.damping],
   );
@@ -273,7 +303,7 @@ export function SpringResponseSurface({
       // Expected input format: "stiffness,damping" (comma-separated). Not
       // discoverable in the UI, but that's what "power-user escape hatch"
       // means — the primary interaction is the pull-and-release.
-      const parts = raw.split(',').map((p) => Number(p.trim()));
+      const parts = raw.split(",").map((p) => Number(p.trim()));
       if (parts.length === 2 && parts.every((n) => Number.isFinite(n))) {
         commitSpring({ stiffness: parts[0]!, damping: parts[1]! });
       }
@@ -297,7 +327,7 @@ export function SpringResponseSurface({
         fill="rgba(94, 234, 212, 0.001)"
         stroke="none"
         pointerEvents="all"
-        style={{ cursor: dragging ? 'grabbing' : 'grab' }}
+        style={{ cursor: dragging ? "grabbing" : "grab" }}
         onPointerDown={startPull}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -332,7 +362,7 @@ export function SpringResponseSurface({
         fill="rgba(94, 234, 212, 0.001)"
         stroke="none"
         pointerEvents="all"
-        style={{ cursor: 'ew-resize' }}
+        style={{ cursor: "ew-resize" }}
         onPointerDown={stiffnessDrag}
       />
       <circle
@@ -370,7 +400,7 @@ export function SpringResponseSurface({
         fill="rgba(94, 234, 212, 0.001)"
         stroke="none"
         pointerEvents="all"
-        style={{ cursor: 'ns-resize' }}
+        style={{ cursor: "ns-resize" }}
         onPointerDown={dampingDrag}
       />
       <circle
@@ -396,7 +426,7 @@ export function SpringResponseSurface({
           y={cy + posRef.current.y - 14}
           width={160}
           height={30}
-          style={{ overflow: 'visible' }}
+          style={{ overflow: "visible" }}
         >
           <NumericEditor
             initial={spring.stiffness}
@@ -412,7 +442,7 @@ export function SpringResponseSurface({
           y={0}
           width={window.innerWidth}
           height={window.innerHeight}
-          style={{ overflow: 'visible', pointerEvents: 'none' }}
+          style={{ overflow: "visible", pointerEvents: "none" }}
         >
           <SurfaceContextMenu
             x={menu.x}

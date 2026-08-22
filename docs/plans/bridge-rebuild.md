@@ -1,3 +1,5 @@
+Completed in 0.5.0
+
 # MotionWorks bridge rebuild — plan
 
 > Hand-off document. After approval, step 0 copies this file to `docs/plans/bridge-rebuild.md` in the repo so any agent (Claude Code, Codex) can be pointed at it. Each slice is self-contained: give an agent **one slice**, the prompt in "How to hand a slice to an agent", and nothing else.

@@ -1,10 +1,10 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from "react";
 
-import type { MotionWorksEffect, ParameterType } from '../../shared/index.js';
+import type { MotionWorksEffect, ParameterType } from "../../shared/index.js";
 
-import { getBridge } from '../bridge.js';
-import { useOverlaySession } from './context.js';
-import { SurfaceForParam } from './surfaces/router.js';
+import { getBridge } from "../bridge.js";
+import { useOverlaySession } from "./context.js";
+import { SurfaceForParam } from "./surfaces/router.js";
 
 interface Props {
   active: boolean;
@@ -18,7 +18,11 @@ interface Props {
 // SVG layer at z-9998, rendered above the canvas. Holds the surface
 // primitives (radius circles, handles). The <svg> itself has
 // pointer-events: none — individual surface elements opt in.
-export function SvgLayer({ active, selectedEffect, only }: Props): React.JSX.Element {
+export function SvgLayer({
+  active,
+  selectedEffect,
+  only,
+}: Props): React.JSX.Element {
   const session = useOverlaySession();
   const node = useTrackedNode(selectedEffect?.id ?? null);
   // Subscribing to the diff store instead of the state manager here is
@@ -47,18 +51,19 @@ export function SvgLayer({ active, selectedEffect, only }: Props): React.JSX.Ele
       width="100%"
       height="100%"
       style={{
-        position: 'fixed',
+        position: "fixed",
         inset: 0,
-        pointerEvents: 'none',
+        pointerEvents: "none",
         zIndex: 9998,
-        overflow: 'visible',
+        overflow: "visible",
       }}
     >
       {shouldRender &&
         Object.entries(selectedEffect.params).map(([paramKey, param]) => {
           const diff = session.diffs.getDiff(selectedEffect.id)[paramKey];
           const liveValue = diff !== undefined ? diff.to : param.value;
-          const effectiveType = session.resolvedType(selectedEffect.id, paramKey) ?? param.type;
+          const effectiveType =
+            session.resolvedType(selectedEffect.id, paramKey) ?? param.type;
           if (only !== undefined && !only.includes(effectiveType)) return null;
           return (
             <SurfaceForParam
@@ -78,7 +83,7 @@ export function SvgLayer({ active, selectedEffect, only }: Props): React.JSX.Ele
 function useTrackedNode(effectId: string | null): HTMLElement | null {
   return useSyncExternalStore(
     (l) => getBridge().subscribeToNodes(l),
-    () => (effectId === null ? null : getBridge().getNode(effectId) ?? null),
+    () => (effectId === null ? null : (getBridge().getNode(effectId) ?? null)),
     () => null,
   );
 }

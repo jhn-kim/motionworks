@@ -107,19 +107,97 @@ describe("DaemonClient", () => {
     client.stop();
   });
 
-  it('preserves a daemon token on POST requests', async () => {
+  it("preserves a daemon token on POST requests", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = new URL(String(input));
-      if (url.pathname === '/status') return response(status);
-      if (url.pathname === '/pending') return response([]);
-      return response({ id: 'change-1' });
+      if (url.pathname === "/status") return response(status);
+      if (url.pathname === "/pending") return response([]);
+      return response({ id: "change-1" });
     });
-    vi.stubGlobal('fetch', fetchMock);
-    const client = new DaemonClient('http://127.0.0.1:52340?token=secret');
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new DaemonClient("http://127.0.0.1:52340?token=secret");
     client.start();
     await vi.waitFor(() => expect(client.isConnected()).toBe(true));
-    await client.commit({ page: '/', effectId: 'x', effectName: 'X', elementSelector: '.x', changes: [] });
-    expect(fetchMock.mock.calls.filter(([input]) => new URL(String(input)).pathname === '/commit').every(([input]) => new URL(String(input)).searchParams.get('token') === 'secret')).toBe(true);
+    await client.commit({
+      page: "/",
+      effectId: "x",
+      effectName: "X",
+      elementSelector: ".x",
+      changes: [],
+    });
+    expect(
+      fetchMock.mock.calls
+        .filter(([input]) => new URL(String(input)).pathname === "/commit")
+        .every(
+          ([input]) =>
+            new URL(String(input)).searchParams.get("token") === "secret",
+        ),
+    ).toBe(true);
+    client.stop();
+  });
+
+  it("polls pending again after a commit races an in-flight poll", async () => {
+    let resolveFirstPending!: (value: Response) => void;
+    let pendingCalls = 0;
+    const entry = {
+      id: "change-1",
+      createdAt: 1,
+      origin: "",
+      page: "/",
+      effectId: "x",
+      effectName: "X",
+      elementSelector: ".x",
+      changes: [],
+      status: "pending" as const,
+    };
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/status")) return response(status);
+        if (url.endsWith("/commit") && init?.method === "POST") {
+          return response({ id: entry.id });
+        }
+        if (url.endsWith("/pending")) {
+          pendingCalls++;
+          if (pendingCalls === 1) {
+            return await new Promise<Response>((resolve) => {
+              resolveFirstPending = resolve;
+            });
+          }
+          return response([entry]);
+        }
+        return response([]);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const received: unknown[] = [];
+    const client = new DaemonClient("http://127.0.0.1:52340");
+    client.onPending((entries) => received.push(entries));
+    client.start();
+    await vi.waitFor(() => expect(client.isConnected()).toBe(true));
+
+    const refresh = client.refresh();
+    await vi.waitFor(() => expect(pendingCalls).toBe(1));
+    const committing = client.commit({
+      page: "/",
+      effectId: "x",
+      effectName: "X",
+      elementSelector: ".x",
+      changes: [],
+    });
+    await vi.waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input).endsWith("/commit") && init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    resolveFirstPending(response([]));
+
+    await Promise.all([refresh, committing]);
+    expect(pendingCalls).toBe(2);
+    expect(received.at(-1)).toEqual([entry]);
     client.stop();
   });
 });

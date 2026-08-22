@@ -18,11 +18,13 @@ const sgr =
 const bold = sgr(1, 22);
 export const dim = sgr(2, 22);
 export const cyan = sgr(36, 39);
-/** Deep red (256-color) — the MotionWorks brand accent. */
-const red = sgr("38;5;124", 39);
+/** MotionWorks brand yellow (#faea37). */
+export const brand = sgr("38;2;250;234;55", 39);
 export const green = sgr(32, 39);
 export const yellow = sgr(33, 39);
 export const gray = sgr(90, 39);
+/** A softer red that stays legible beside the brand yellow in prompts. */
+export const mutedRed = sgr("38;2;255;105;97", 39);
 
 /** Status glyphs for step lines. Informative even when color is off. */
 export const symbols = {
@@ -32,7 +34,7 @@ export const symbols = {
   failed: yellow("✗"),
 } as const;
 
-/** One indented step line, e.g. `  ✓ Created .mcp.json`. */
+/** One indented step line, e.g. `  ✓ Updated the MotionWorks guide`. */
 export function step(symbol: string, message: string): string {
   return `  ${symbol} ${message}`;
 }
@@ -44,10 +46,13 @@ export function heading(text: string): string {
 
 /** The header shown once at the top of `init`. */
 export function banner(version: string): string {
-  const title = bold(red("MotionWorks"));
+  const logo =
+    brand(String.raw`  __ _  ___  / /_(_)__  ___ _    _____  ____/ /__ ___
+ /  ' \/ _ \/ __/ / _ \/ _ \ |/|/ / _ \/ __/  '_/(_-<
+/_/_/_/\___/\__/_/\___/_//_/__,__/\___/_/ /_/\_\/___/`);
   const ver = dim(`v${version}`);
   const tag = dim(
     "Direct-manipulation motion design layer for AI coding agents",
   );
-  return `\n  ${title}  ${ver}\n  ${tag}\n`;
+  return `\n${logo}\n\n  ${ver}\n  ${tag}\n`;
 }

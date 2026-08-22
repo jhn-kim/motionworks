@@ -1,13 +1,13 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext } from "react";
 
-import type { ParameterType } from '../../shared/index.js';
+import type { ParameterType } from "../../shared/index.js";
 
-import type { ScaleSpec } from './scale.js';
+import type { ScaleSpec } from "./scale.js";
 
 export interface ArmedTool {
   effectId: string;
   paramKey: string;
-  axis?: 'stiffness' | 'damping' | 'mass';
+  axis?: "stiffness" | "damping" | "mass";
   label: string;
   unit?: string | undefined;
   spec: ScaleSpec;

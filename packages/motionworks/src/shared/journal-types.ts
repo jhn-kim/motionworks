@@ -1,6 +1,6 @@
-import type { ParameterType, TypeCorrection } from './types.js';
+import type { ParameterType, TypeCorrection } from "./types.js";
 
-export type JournalStatus = 'pending' | 'agent-working' | 'applied';
+export type JournalStatus = "pending" | "agent-working" | "applied";
 
 export interface JournalChange {
   param: string;
@@ -25,14 +25,21 @@ export interface JournalEntry {
   typeCorrections?: TypeCorrection[];
   status: JournalStatus;
   appliedAt?: number;
-  appliedBy?: 'css' | 'agent' | 'cli';
+  appliedBy?: "css" | "agent" | "cli";
   files?: string[];
   error?: string;
 }
 
 export type CommitRequest = Omit<
   JournalEntry,
-  'id' | 'createdAt' | 'origin' | 'status' | 'appliedAt' | 'appliedBy' | 'files' | 'error'
+  | "id"
+  | "createdAt"
+  | "origin"
+  | "status"
+  | "appliedAt"
+  | "appliedBy"
+  | "files"
+  | "error"
 >;
 
 export interface SelectRequest {
@@ -48,5 +55,9 @@ export interface StatusResponse {
   port: number;
   projectRoot: string;
   pending: number;
-  agent: { enabled: boolean; command: 'claude' | 'codex' | null; running: boolean };
+  agent: {
+    enabled: boolean;
+    command: "claude" | "codex" | null;
+    running: boolean;
+  };
 }

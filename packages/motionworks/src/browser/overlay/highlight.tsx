@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
-import { COLORS, FONT, HIGHLIGHT } from './theme.js';
+import { COLORS, FONT, HIGHLIGHT } from "./theme.js";
 
 interface Props {
   node: HTMLElement | null;
@@ -11,8 +11,12 @@ interface Props {
 // Absolutely-positioned bordered div that tracks a node's bounding rect
 // each animation frame. Never blocks pointer events. Optional label renders
 // as a small chip above the outline (or top-inside if the element is near
-// the top of the viewport) — matches the activation reveal badge.
-export function NodeHighlight({ node, color, label }: Props): React.JSX.Element | null {
+// the top of the viewport).
+export function NodeHighlight({
+  node,
+  color,
+  label,
+}: Props): React.JSX.Element | null {
   const [rect, setRect] = useState<DOMRect | null>(() =>
     node !== null ? node.getBoundingClientRect() : null,
   );
@@ -41,36 +45,38 @@ export function NodeHighlight({ node, color, label }: Props): React.JSX.Element 
   return (
     <div
       style={{
-        position: 'fixed',
+        position: "fixed",
         left: rect.left - HIGHLIGHT.offset,
         top: rect.top - HIGHLIGHT.offset,
         width: rect.width + HIGHLIGHT.offset * 2,
         height: rect.height + HIGHLIGHT.offset * 2,
-        pointerEvents: 'none',
-        boxSizing: 'border-box',
-        transition: 'none',
+        pointerEvents: "none",
+        boxSizing: "border-box",
+        transition: "none",
       }}
     >
       <div
         style={{
-          position: 'absolute',
+          position: "absolute",
           inset: 0,
           border: `1.5px solid ${color}`,
           borderRadius: 4,
           // Dark rim just outside the light border keeps the (grayscale)
           // highlight legible on light and dark app backgrounds alike.
-          boxShadow: '0 0 0 1.5px rgba(0, 0, 0, 0.55)',
-          boxSizing: 'border-box',
+          boxShadow: "0 0 0 1.5px rgba(0, 0, 0, 0.55)",
+          boxSizing: "border-box",
         }}
       />
-      {label !== undefined && label !== '' ? (
+      {label !== undefined && label !== "" ? (
         <span
           style={{
-            position: 'absolute',
+            position: "absolute",
             left: 0,
-            ...(labelFitsAbove ? { bottom: '100%', marginBottom: 4 } : { top: 4, marginLeft: 4 }),
-            padding: '3px 7px',
-            background: 'rgba(15, 17, 17, 0.96)',
+            ...(labelFitsAbove
+              ? { bottom: "100%", marginBottom: 4 }
+              : { top: 4, marginLeft: 4 }),
+            padding: "3px 7px",
+            background: "rgba(15, 17, 17, 0.96)",
             // The border ties the chip to the outline stroke; the text stays
             // full-strength ink so it reads even when the stroke is a faint
             // hover tint.
@@ -80,7 +86,7 @@ export function NodeHighlight({ node, color, label }: Props): React.JSX.Element 
             fontSize: FONT.sizeLabel,
             lineHeight: 1.2,
             fontFamily: FONT.family,
-            whiteSpace: 'nowrap',
+            whiteSpace: "nowrap",
           }}
         >
           {label}

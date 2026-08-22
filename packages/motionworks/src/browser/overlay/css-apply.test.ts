@@ -1,6 +1,111 @@
-import { describe, expect, it, vi } from 'vitest';
-import { applyLive, findDeclaringRule, readBaseline, restoreLive } from './css-apply.js';
-describe('CSS apply', () => {
-  it('reads stylesheet, inline, and absent baselines; applies events and restores', () => { document.head.innerHTML = '<style>.card{--mw-radius:100px}</style>'; const node = document.createElement('div'); node.className = 'card'; document.body.append(node); const read = readBaseline(node, 'radius', { type: 'spatial-radius' }); expect(read.value).toBe(100); const listener = vi.fn(); node.addEventListener('motionworks:change', listener); applyLive(node, { type: 'spatial-radius' }, read.binding, 120); expect(node.style.getPropertyValue('--mw-radius')).toBe('120px'); expect(listener).toHaveBeenCalledOnce(); restoreLive(node, read.binding); expect(node.style.getPropertyValue('--mw-radius')).toBe(''); node.style.setProperty('--mw-radius', '80px'); expect(readBaseline(node, 'radius', { type: 'spatial-radius' }).value).toBe(80); expect(readBaseline(node, 'missing', { type: 'scalar' }).binding.bound).toBe(false); node.remove(); });
-  it('finds the last matching rule including :root and nested media', () => { document.head.innerHTML = '<style data-vite-dev-id="src/a.css">:root{--mw-radius:50px}.card{--mw-radius:80px}@media all{.card{--mw-radius:100px}}</style>'; const node = document.createElement('div'); node.className = 'card'; document.body.append(node); expect(findDeclaringRule(node, '--mw-radius')).toMatchObject({ selectorText: '.card', sourceFile: 'src/a.css' }); node.remove(); });
+// @vitest-environment jsdom
+import { describe, expect, it, vi } from "vitest";
+import {
+  applyLive,
+  findDeclaringRule,
+  readBaseline,
+  retimeCurrentTime,
+  restoreLive,
+  watchStylesheets,
+} from "./css-apply.js";
+describe("CSS apply", () => {
+  it("keeps the same animation phase when duration changes", () => {
+    expect(
+      retimeCurrentTime(
+        750,
+        { delay: 250, duration: 1000 },
+        { delay: 250, duration: 2000 },
+      ),
+    ).toBe(1250);
+    expect(
+      retimeCurrentTime(
+        100,
+        { delay: 250, duration: 1000 },
+        { delay: 250, duration: 2000 },
+      ),
+    ).toBe(100);
+  });
+
+  it("reads stylesheet, inline, and absent baselines; applies events and restores", () => {
+    document.head.innerHTML = "<style>.card{--mw-radius:100px}</style>";
+    const node = document.createElement("div");
+    node.className = "card";
+    document.body.append(node);
+    const read = readBaseline(node, "radius", { type: "spatial-radius" });
+    expect(read.value).toBe(100);
+    const listener = vi.fn();
+    node.addEventListener("motionworks:change", listener);
+    applyLive(node, { type: "spatial-radius" }, read.binding, 120);
+    expect(node.style.getPropertyValue("--mw-radius")).toBe("120px");
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: { param: "radius", value: 120, css: "120px" },
+      }),
+    );
+    restoreLive(node, read.binding);
+    expect(node.style.getPropertyValue("--mw-radius")).toBe("");
+    node.style.setProperty("--mw-radius", "80px");
+    expect(readBaseline(node, "radius", { type: "spatial-radius" }).value).toBe(
+      80,
+    );
+    expect(
+      readBaseline(node, "missing", { type: "scalar" }).binding.bound,
+    ).toBe(false);
+    node.remove();
+  });
+  it("finds the last matching rule including :root and nested media", () => {
+    document.head.innerHTML =
+      '<style data-vite-dev-id="src/a.css">:root{--mw-radius:50px}.card{--mw-radius:80px}@media all{.card{--mw-radius:100px}}</style>';
+    const node = document.createElement("div");
+    node.className = "card";
+    document.body.append(node);
+    expect(findDeclaringRule(node, "--mw-radius")).toMatchObject({
+      selectorText: ".card",
+      sourceFile: "src/a.css",
+    });
+    node.remove();
+  });
+
+  it("refreshes only for stylesheet mutations, not overlay UI changes", async () => {
+    const refresh = vi.fn();
+    const stop = watchStylesheets(refresh);
+
+    const hoverChip = document.createElement("div");
+    hoverChip.setAttribute("data-motionworks-overlay", "");
+    document.body.appendChild(hoverChip);
+    await Promise.resolve();
+    expect(refresh).not.toHaveBeenCalled();
+
+    const drawerStyle = document.createElement("style");
+    drawerStyle.setAttribute("data-motionworks-overlay-style", "");
+    drawerStyle.textContent = ".ms-slider { color: white; }";
+    hoverChip.appendChild(drawerStyle);
+    await Promise.resolve();
+    expect(refresh).not.toHaveBeenCalled();
+
+    drawerStyle.remove();
+    await Promise.resolve();
+    expect(refresh).not.toHaveBeenCalled();
+
+    const frameworkRoot = document.createElement("div");
+    const nestedOverlay = document.createElement("div");
+    nestedOverlay.setAttribute("data-motionworks-overlay", "");
+    const nestedOverlayStyle = document.createElement("style");
+    nestedOverlayStyle.setAttribute("data-motionworks-overlay-style", "");
+    nestedOverlay.appendChild(nestedOverlayStyle);
+    frameworkRoot.appendChild(nestedOverlay);
+    document.body.appendChild(frameworkRoot);
+    await Promise.resolve();
+    expect(refresh).not.toHaveBeenCalled();
+
+    const style = document.createElement("style");
+    style.textContent = ".card { --mw-radius: 120px; }";
+    document.head.appendChild(style);
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+
+    stop();
+    hoverChip.remove();
+    frameworkRoot.remove();
+    style.remove();
+  });
 });

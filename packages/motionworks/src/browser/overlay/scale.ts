@@ -1,4 +1,4 @@
-import type { ParameterType } from '../../shared/index.js';
+import type { ParameterType } from "../../shared/index.js";
 
 // The designer-facing 0–10 scale. Every scalar tool is adjusted on this
 // normalized scale; the mapping to real units is per-type so that equal
@@ -10,7 +10,7 @@ import type { ParameterType } from '../../shared/index.js';
 // Real values remain the source of truth everywhere (writeback, wire, and
 // the agent never see 0–10).
 
-export type ScaleCurve = 'linear' | 'log' | 'quad';
+export type ScaleCurve = "linear" | "log" | "quad";
 
 export interface ScaleSpec {
   min: number;
@@ -20,13 +20,13 @@ export interface ScaleSpec {
 
 export function curveForType(type: ParameterType): ScaleCurve {
   switch (type) {
-    case 'duration':
-    case 'stagger':
-      return 'quad';
-    case 'spring-response':
-      return 'log';
+    case "duration":
+    case "stagger":
+      return "quad";
+    case "spring-response":
+      return "log";
     default:
-      return 'linear';
+      return "linear";
   }
 }
 
@@ -43,11 +43,11 @@ function logFloor(spec: ScaleSpec): number {
 export function scaleToValue(scale: number, spec: ScaleSpec): number {
   const t = clampScale(scale) / 10;
   switch (spec.curve) {
-    case 'linear':
+    case "linear":
       return spec.min + (spec.max - spec.min) * t;
-    case 'quad':
+    case "quad":
       return spec.min + (spec.max - spec.min) * t * t;
-    case 'log': {
+    case "log": {
       const min = logFloor(spec);
       return min * Math.pow(spec.max / min, t);
     }
@@ -58,13 +58,13 @@ export function valueToScale(value: number, spec: ScaleSpec): number {
   if (!(spec.max > spec.min)) return 0;
   let t: number;
   switch (spec.curve) {
-    case 'linear':
+    case "linear":
       t = (value - spec.min) / (spec.max - spec.min);
       break;
-    case 'quad':
+    case "quad":
       t = Math.sqrt(Math.max(0, value - spec.min) / (spec.max - spec.min));
       break;
-    case 'log': {
+    case "log": {
       const min = logFloor(spec);
       t = value <= min ? 0 : Math.log(value / min) / Math.log(spec.max / min);
       break;
@@ -85,5 +85,5 @@ export function formatScale(scale: number): string {
 export function formatReal(value: number, unit?: string): string {
   const abs = Math.abs(value);
   const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
-  return `${value.toFixed(digits)}${unit ?? ''}`;
+  return `${value.toFixed(digits)}${unit ?? ""}`;
 }

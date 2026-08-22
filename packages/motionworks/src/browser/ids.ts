@@ -1,12 +1,12 @@
 export function slugify(name: string): string {
   const slug = name
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug || 'effect';
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "effect";
 }
 
 export function allocateEffectId(
@@ -25,7 +25,13 @@ export function allocateEffectId(
     if (match === null) continue;
     const index = Number(match[1]);
     used.add(index);
-    if (nodes.some((other) => other.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+    if (
+      nodes.some(
+        (other) =>
+          other.compareDocumentPosition(node) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      )
+    ) {
       preceding.push(index);
     }
   }
@@ -36,5 +42,5 @@ export function allocateEffectId(
 }
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

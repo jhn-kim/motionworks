@@ -1,14 +1,17 @@
-import type { MotionWorksEffect, ParameterType } from '../../../shared/index.js';
+import type {
+  MotionWorksEffect,
+  ParameterType,
+} from "../../../shared/index.js";
 
-import { GradientSurface } from './gradient.js';
-import { PathSurface } from './path.js';
-import { ScalarSurface } from './scalar.js';
-import { SpatialRadiusSurface } from './spatial-radius.js';
-import { SpatialStrengthSurface } from './spatial-strength.js';
-import { SpringResponseSurface } from './spring-response.js';
-import { StaggerSurface } from './stagger.js';
-import { TemporalDecaySurface } from './temporal-decay.js';
-import { TemporalResponseSurface } from './temporal-response.js';
+import { GradientSurface } from "./gradient.js";
+import { PathSurface } from "./path.js";
+import { ScalarSurface } from "./scalar.js";
+import { SpatialRadiusSurface } from "./spatial-radius.js";
+import { SpatialStrengthSurface } from "./spatial-strength.js";
+import { SpringResponseSurface } from "./spring-response.js";
+import { StaggerSurface } from "./stagger.js";
+import { TemporalDecaySurface } from "./temporal-decay.js";
+import { TemporalResponseSurface } from "./temporal-response.js";
 
 interface Props {
   effect: MotionWorksEffect;
@@ -42,38 +45,48 @@ export function SurfaceForParam({
   };
 
   switch (effectiveType) {
-    case 'spatial-radius':
-      return typeof liveValue === 'number' ? (
+    case "spatial-radius":
+      return typeof liveValue === "number" ? (
         <SpatialRadiusSurface {...common} liveValue={liveValue} />
       ) : null;
-    case 'spatial-strength':
-      return typeof liveValue === 'number' ? (
+    case "spatial-strength":
+      return typeof liveValue === "number" ? (
         <SpatialStrengthSurface {...common} liveValue={liveValue} />
       ) : null;
-    case 'temporal-decay':
-      return typeof liveValue === 'number' ? (
+    case "temporal-decay":
+      return typeof liveValue === "number" ? (
         <TemporalDecaySurface {...common} liveValue={liveValue} />
       ) : null;
-    case 'temporal-response':
-      return typeof liveValue === 'number' ? (
+    case "temporal-response":
+      return typeof liveValue === "number" ? (
         <TemporalResponseSurface {...common} liveValue={liveValue} />
       ) : null;
-    case 'spring-response':
+    case "spring-response":
       return <SpringResponseSurface {...common} liveValue={liveValue} />;
-    case 'gradient':
+    case "gradient":
       return Array.isArray(liveValue) ? (
-        <GradientSurface {...common} liveValue={liveValue as { stop: number; color: string }[]} />
+        <GradientSurface
+          {...common}
+          liveValue={liveValue as { stop: number; color: string }[]}
+        />
       ) : null;
-    case 'path':
+    case "path":
       return Array.isArray(liveValue) ? (
-        <PathSurface {...common} liveValue={liveValue as { x: number; y: number }[]} />
+        <PathSurface
+          {...common}
+          liveValue={liveValue as { x: number; y: number }[]}
+        />
       ) : null;
-    case 'stagger':
-      return typeof liveValue === 'number' ? (
-        <StaggerSurface {...common} liveValue={liveValue} effectName={effect.name} />
+    case "stagger":
+      return typeof liveValue === "number" ? (
+        <StaggerSurface
+          {...common}
+          liveValue={liveValue}
+          effectName={effect.name}
+        />
       ) : null;
-    case 'scalar':
-      return typeof liveValue === 'number' ? (
+    case "scalar":
+      return typeof liveValue === "number" ? (
         <ScalarSurface {...common} liveValue={liveValue} />
       ) : null;
     // duration / easing-curve have no on-element surface — they are edited

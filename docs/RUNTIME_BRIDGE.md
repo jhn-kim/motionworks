@@ -1,243 +1,239 @@
 # MotionWorks — Runtime Bridge
 
-> **Maintenance rule:** This file defines the live preview loop: how parameter changes from the overlay reach the running effect without touching source files. If the update() contract, the reserved parameter keys, or the per-library implementation patterns change, edit in place. Do not append. Changes require product owner confirmation.
+> **Maintenance rule:** This file defines the live preview loop: how parameter changes from the overlay reach the running effect without touching source files. If the CSS-property contract, event names, or per-library implementation patterns change, edit in place. Do not append. Changes require product owner confirmation.
 
 ---
 
 ## Purpose
 
-When the designer drags a manipulation surface handle, the motion effect must update immediately — in real time, on the live running product, without any file write, without any network round-trip, without any page reload.
+When a designer drags a control, the real effect must respond before the next frame. The live-preview path cannot wait for the daemon, a file write, HMR, or an agent.
 
-This is the "feel" loop. It is what makes MotionWorks feel different from a chat interface. The difference between 0.15 and 0.2 on a lerp factor is not describable in words; it has to be felt by manipulating and watching. Latency in this loop breaks the experience.
+MotionWorks uses the browser's style system as that bridge:
 
-This file describes how that loop works: the `update()` function contract, the constraints on implementations, and patterns for each major animation library.
-
----
-
-## The `update()` Contract
-
-Every `useMotionWorks` registration must include an `update` function:
-
-```ts
-update: (newParams: Record<string, unknown>) => void
+```
+real stylesheet declaration
+        ↓ getComputedStyle
+MotionWorks baseline and editing UI
+        ↓ element.style.setProperty
+live inline CSS value
+        ↓ CSS itself or motionworks:change
+running effect
 ```
 
-**Constraints — these are hard requirements, not suggestions:**
-
-1. **Synchronous.** `update()` must be synchronous. It cannot return a Promise, cannot `await`, cannot schedule a microtask. It is called on every pointer move event; async behavior breaks the 60fps feel.
-
-2. **Immediate.** The visual effect must change before the next frame. If `update()` takes more than ~4ms, the overlay will feel laggy.
-
-3. **Partial updates.** `update()` receives only the params that changed in a given event, not the full set. Example: if the designer is dragging the radius handle, `update({ radius: 145 })` is called — not `update({ distortion: 0.8, radius: 145, trail: 0.6 })`. The implementation must not reset other params to defaults when a partial update is received. Merge new values into current state; do not replace.
-
-4. **Idempotent.** Calling `update({ radius: 145 })` twice in a row must produce the same result as calling it once.
-
-5. **No side effects.** `update()` must not trigger network requests, log to the console, or cause any React re-renders outside the effect's own animation system. It should only mutate the state the effect uses to compute its next frame.
+The daemon participates only in selection, Apply, status, and acknowledgment. No manipulation traffic crosses the network.
 
 ---
 
-## Reserved Parameter Keys
+## CSS Custom-Property Contract
 
-MotionWorks uses a small set of reserved keys in the `update()` call for global surfaces. Effects that support these should handle them; effects that don't should ignore them silently.
+Each schema parameter maps to a CSS property. The default is `--mw-<kebab-key>`; `var` overrides it. The property is declared once in a real source stylesheet on the registered element's rule:
 
-| Key | Type | Description |
+```css
+.magnetic-button {
+  --mw-radius: 120px;
+  --mw-strength: 0.8;
+  --mw-response: 0.18;
+}
+```
+
+On registration, MotionWorks reads `getComputedStyle(element).getPropertyValue(varName)`, decodes it according to the parameter type, and remembers the source unit and prior inline value. If the value cannot be decoded, the binding is marked unbound and live writes become no-ops.
+
+On manipulation, MotionWorks:
+
+1. Encodes the runtime value using the unit originally read from CSS.
+2. Calls `element.style.setProperty` for custom properties, or `KeyframeEffect.updateTiming` for an auto-detected animation longhand.
+3. Dispatches a bubbling `motionworks:change` CustomEvent.
+4. Records the difference from the stylesheet baseline.
+
+Restoring or merely reading a value never dispatches a change event.
+
+---
+
+## Browser Helpers
+
+`motionworks/browser` exports the framework-free API; `motionworks/react` re-exports the same functions.
+
+```ts
+import {
+  DEFAULT_VAR_PREFIX,
+  EVENTS,
+  onParamsChange,
+  readParam,
+  readParams,
+  varNameFor,
+} from 'motionworks/browser';
+```
+
+### `DEFAULT_VAR_PREFIX`
+
+The default custom-property prefix, `--mw-`.
+
+### `varNameFor(key, spec)`
+
+Returns `spec.var` or the default `--mw-<kebab-key>` property.
+
+### `readParam(element, key, spec)`
+
+Reads and decodes one current computed value. It returns the runtime value or `null` when the CSS is absent or unsupported.
+
+### `readParams(element, params)`
+
+Reads every decodable parameter and returns a `Record<string, unknown>` keyed by schema parameter name. Unbound values are omitted.
+
+### `onParamsChange(element, callback)`
+
+Subscribes to `motionworks:change` on the element and returns an unsubscribe function. The event detail includes the schema parameter name, runtime value, and encoded CSS. Effects should normally re-read the full current parameter set because computed values—not event payload accumulation—are the source of truth:
+
+```ts
+const sync = () => effect.update(readParams(element, schema.params));
+sync();
+const stop = onParamsChange(element, sync);
+```
+
+This `effect.update` is an application/library method in the example, not a MotionWorks registration callback.
+
+---
+
+## Events
+
+`EVENTS` contains the stable public names:
+
+| Constant | Event | Detail |
 |---|---|---|
-| `__motionworksScrub` | `number` | Current playhead position in milliseconds. Effect should freeze at this time offset. |
-| `__motionworksActive` | `boolean` | Whether the overlay is active. Effects can use this to pause/resume internal tickers. |
+| `EVENTS.change` | `motionworks:change` | `{ param: string; value: unknown; css: string }` |
+| `EVENTS.replay` | `motionworks:replay` | Fresh timestamp |
+| `EVENTS.scrub` | `motionworks:scrub` | Playhead position in milliseconds |
 
-No effect is required to handle reserved keys. Ignoring them is the safe default.
+All three bubble from the registered element. Replay and scrub are dispatched only for effects that opt into the corresponding capability.
+
+```ts
+element.addEventListener(EVENTS.replay, () => replayAnimation());
+element.addEventListener(EVENTS.scrub, (event) => {
+  seekAnimation((event as CustomEvent<number>).detail);
+});
+```
+
+Replay must animate only. It must not navigate, submit, mutate business state, or reproduce another behavioral consequence of the real interaction.
 
 ---
 
 ## Implementation Patterns by Library
 
-### CSS Custom Properties
+The common rule is: declare the canonical value in CSS, read it at initialization, and refresh the library's imperative value when `motionworks:change` fires.
 
-The simplest approach. Define effect parameters as CSS custom properties and update them via JavaScript.
+### CSS-native effects
 
-```ts
-// In the component
-const DISTORTION_STRENGTH = 0.8;
-const INFLUENCE_RADIUS = 120;
+If the effect can consume the custom property directly, no JavaScript subscription is necessary:
 
-// In the update function
-update: (newParams) => {
-  if (newParams.distortion !== undefined) {
-    ref.current!.style.setProperty('--distortion', String(newParams.distortion));
-  }
-  if (newParams.radius !== undefined) {
-    ref.current!.style.setProperty('--radius', `${newParams.radius}px`);
-  }
+```css
+.magnetic-button {
+  --mw-radius: 120px;
+  filter: blur(calc(var(--mw-radius) * 0.02));
 }
 ```
 
-CSS custom property updates are synchronous and picked up by the browser's rendering pipeline on the next frame. This is the lowest-latency approach available. Use it wherever the animation logic lives in CSS.
+The overlay's inline property is picked up by CSS on the next rendering cycle.
 
----
+### Framer Motion / Motion
 
-### Framer Motion (`motion` components, `useMotionValue`)
-
-Framer Motion's `MotionValue` is the right target — it updates without triggering React re-renders.
+Read the CSS baseline into `MotionValue`s and set them imperatively on change:
 
 ```ts
-// In the component
-const distortion = useMotionValue(DISTORTION_STRENGTH);
-const radius = useMotionValue(INFLUENCE_RADIUS);
+const radius = useMotionValue(0);
+const response = useMotionValue(0);
 
-// Pass these to the effect or to a motion component's style prop
-// ...
-
-// In the update function
-update: (newParams) => {
-  if (newParams.distortion !== undefined) distortion.set(newParams.distortion as number);
-  if (newParams.radius !== undefined)     radius.set(newParams.radius as number);
-}
+useEffect(() => {
+  const element = ref.current;
+  if (!element) return;
+  const sync = () => {
+    const values = readParams(element, schema.params);
+    if (typeof values.radius === 'number') radius.set(values.radius);
+    if (typeof values.response === 'number') response.set(values.response);
+  };
+  sync();
+  return onParamsChange(element, sync);
+}, [radius, response]);
 ```
 
-**Do not** use React `useState` or `useReducer` for live preview values. State updates trigger a re-render cycle that adds ~4–8ms of latency per event. `MotionValue.set()` is synchronous and bypasses React's reconciler.
-
-For spring configurations (`stiffness`, `damping`), use Framer Motion's `useSpring` and pass the `MotionValue` as input. Updating the spring config mid-animation requires using the animation controls API:
-
-```ts
-const controls = useAnimation();
-
-update: (newParams) => {
-  if (newParams.spring) {
-    controls.start({
-      x: 0,
-      transition: { type: 'spring', ...newParams.spring }
-    });
-  }
-}
-```
-
----
+Use `MotionValue.set()` or the library's imperative controls; do not route pointer-rate updates through React state.
 
 ### GSAP
 
-GSAP tweens can be updated mid-animation using `gsap.to()` with a duration of 0, or by directly mutating the target object.
+Refresh a state object or use `gsap.set` without starting a new tween:
 
 ```ts
-// Keep a reference to the effect target object
-const state = { distortion: DISTORTION_STRENGTH, radius: INFLUENCE_RADIUS };
-
-// Apply the effect using state
-const tween = gsap.to(elementRef.current, {
-  // ... using state.distortion, state.radius
-});
-
-update: (newParams) => {
-  Object.assign(state, newParams);
-  // For immediate visual update without starting a new tween:
-  gsap.set(elementRef.current, {
-    // Map state values to the CSS/SVG attributes the effect uses
-    '--distortion': state.distortion,
-    '--radius': state.radius,
+const sync = () => {
+  const values = readParams(element, schema.params);
+  Object.assign(effectState, values);
+  gsap.set(element, {
+    '--effect-radius': effectState.radius,
+    '--effect-strength': effectState.strength,
   });
-}
+};
+
+sync();
+const stop = onParamsChange(element, sync);
 ```
 
-For shader-based GSAP effects, see the WebGL section below.
-
----
+The `--effect-*` properties above are implementation properties. The canonical editable values remain the `--mw-*` declarations read through the schema.
 
 ### react-spring
 
-react-spring's `useSpring` hook can be updated imperatively using the returned `api` object.
+Use the returned imperative API:
 
 ```ts
-const [springs, api] = useSpring(() => ({
-  stiffness: SPRING_STIFFNESS,
-  damping: SPRING_DAMPING,
-}));
-
-update: (newParams) => {
-  if (newParams.spring) {
-    api.start({ config: newParams.spring as SpringConfig });
-  }
-}
-```
-
-`api.start()` is non-blocking and updates the spring configuration immediately. The animation adjusts on the next frame.
-
----
-
-### WebGL / Shaders
-
-WebGL effects expose parameters as GLSL uniforms. The `update()` function must write to the uniform directly.
-
-```ts
-// Keep a reference to the WebGL context and program
-const glRef = useRef<{ gl: WebGLRenderingContext; program: WebGLProgram } | null>(null);
-
-update: (newParams) => {
-  if (!glRef.current) return;
-  const { gl, program } = glRef.current;
-
-  if (newParams.distortion !== undefined) {
-    const loc = gl.getUniformLocation(program, 'u_distortion');
-    gl.uniform1f(loc, newParams.distortion as number);
-  }
-  if (newParams.radius !== undefined) {
-    const loc = gl.getUniformLocation(program, 'u_radius');
-    gl.uniform1f(loc, newParams.radius as number);
-  }
-  // The render loop picks up the new uniform values on the next frame.
-}
-```
-
-**Performance note:** `gl.getUniformLocation` has some overhead. Cache uniform locations at effect initialization rather than looking them up on every `update()` call:
-
-```ts
-// At initialization:
-const uniformLocations = {
-  distortion: gl.getUniformLocation(program, 'u_distortion'),
-  radius:     gl.getUniformLocation(program, 'u_radius'),
+const sync = () => {
+  const spring = readParam(element, 'spring', schema.params.spring);
+  if (spring) api.start({ config: spring as SpringConfig });
 };
 
-// In update():
-update: (newParams) => {
-  if (newParams.distortion !== undefined) {
-    gl.uniform1f(uniformLocations.distortion, newParams.distortion as number);
-  }
-}
+sync();
+const stop = onParamsChange(element, sync);
 ```
 
----
+### WebGL, Three.js, canvas, and custom render loops
 
-### Three.js / custom render loops
-
-Same principle as WebGL: mutate the material or object property directly. Three.js materials update on the next render loop tick.
+Read the CSS values and update cached uniforms or effect state directly:
 
 ```ts
-const materialRef = useRef<THREE.ShaderMaterial | null>(null);
-
-update: (newParams) => {
-  if (!materialRef.current) return;
-  if (newParams.distortion !== undefined) {
-    materialRef.current.uniforms.uDistortion.value = newParams.distortion;
+const sync = () => {
+  const values = readParams(element, schema.params);
+  if (typeof values.distortion === 'number') {
+    gl.uniform1f(uniformLocations.distortion, values.distortion);
   }
-}
+  if (typeof values.radius === 'number') {
+    gl.uniform1f(uniformLocations.radius, values.radius);
+  }
+};
+
+sync();
+const stop = onParamsChange(element, sync);
 ```
+
+Cache expensive handles such as uniform locations during effect initialization. The event handler should remain small enough to complete before the next frame.
 
 ---
 
-## Uncommitted Change Tracking
+## Multiple Instances
 
-Every call to `update()` from a manipulation event produces a delta from the baseline (the value in the registered schema at the time of last HMR). MotionWorks tracks this delta:
+Each registered DOM instance has its own `slug#n` id and CSS binding. When a designer changes one instance, MotionWorks also previews the value on same-slug sibling elements whose computed baseline equals the selected element's baseline. This preserves coordinated list/card tuning without overwriting an instance that intentionally starts from a different value.
 
+---
+
+## Uncommitted Intent and Restoration
+
+The diff store records real runtime values, not encoded CSS strings:
+
+```text
+stylesheet baseline: radius = 120
+live preview:        radius = 165
+intent:              radius 120 → 165
 ```
-Registered (baseline): distortion = 0.8, radius = 120
-After manipulation:     distortion = 0.8, radius = 165
-Delta (uncommitted):    radius: 120 → 165
-```
 
-The overlay renders a visual indicator when uncommitted changes exist (a dot or badge on the effect name label). This communicates to the designer that their changes have not yet been written to source.
+Diffs persist in `localStorage` per page origin. Reloading the page hydrates them and re-applies the `to` value after registration unless the new stylesheet baseline already equals that value.
 
-When the designer clicks "Apply," the uncommitted delta is packaged and sent to the MCP bridge for the agent to commit. See `SOURCE_SYNC.md` for the full commit flow.
+- **Compare** temporarily applies the baseline through the same live CSS path, then restores the edited value.
+- **Discard** restores each property's prior inline state and clears the diff.
+- **Apply** retains the intent until the stylesheet reflects the chosen value and reconciliation acknowledges the journal entry.
 
-Uncommitted changes are discarded without warning if:
-- The designer selects "Discard" explicitly
-- A new `useMotionWorks` registration arrives with the same effect ID and its values match the designer's committed choices (meaning the agent already wrote the changes and HMR brought them in)
-
-Uncommitted changes survive HMR reloads. See `OVERLAY.md` for the HMR strategy.
+Stylesheet observers watch added/replaced style and link nodes plus link load events. Refresh removes live inline values, re-reads computed baselines, re-registers, reconciles, and re-applies outstanding intent synchronously.

@@ -1,13 +1,13 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from "react";
 
-import type { GradientStop } from '../../../shared/index.js';
+import type { GradientStop } from "../../../shared/index.js";
 
-import { ColorPickerPopover } from '../color-picker.js';
-import { useOverlaySession } from '../context.js';
-import { COLORS, FONT, GRADIENT_SURFACE, HANDLES } from '../theme.js';
-import { SurfaceContextMenu } from './shared/context-menu.js';
-import { useCanvasDrawer, useNodeRect } from './shared/hooks.js';
-import type { SurfaceProps } from './shared/props.js';
+import { ColorPickerPopover } from "../color-picker.js";
+import { useOverlaySession } from "../context.js";
+import { COLORS, FONT, GRADIENT_SURFACE, HANDLES } from "../theme.js";
+import { SurfaceContextMenu } from "./shared/context-menu.js";
+import { useCanvasDrawer, useNodeRect } from "./shared/hooks.js";
+import type { SurfaceProps } from "./shared/props.js";
 
 const MIN_STOPS = 2;
 
@@ -23,9 +23,10 @@ export function normaliseStops(stops: GradientStop[]): GradientStop[] {
 // Handles common CSS colour formats: hex (#rgb, #rrggbb) and rgb(...).
 export function interpolateStopColor(stops: GradientStop[], t: number): string {
   const sorted = normaliseStops(stops);
-  if (sorted.length === 0) return '#ffffff';
+  if (sorted.length === 0) return "#ffffff";
   if (sorted.length === 1 || t <= sorted[0]!.stop) return sorted[0]!.color;
-  if (t >= sorted[sorted.length - 1]!.stop) return sorted[sorted.length - 1]!.color;
+  if (t >= sorted[sorted.length - 1]!.stop)
+    return sorted[sorted.length - 1]!.color;
   for (let i = 0; i < sorted.length - 1; i++) {
     const a = sorted[i]!;
     const b = sorted[i + 1]!;
@@ -49,7 +50,7 @@ function mixColors(a: string, b: string, t: number): string {
 
 function parseColor(input: string): { r: number; g: number; b: number } {
   const s = input.trim();
-  if (s.startsWith('#')) {
+  if (s.startsWith("#")) {
     const hex = s.slice(1);
     if (hex.length === 3) {
       return {
@@ -68,7 +69,11 @@ function parseColor(input: string): { r: number; g: number; b: number } {
   }
   const rgbMatch = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(s);
   if (rgbMatch !== null) {
-    return { r: Number(rgbMatch[1]), g: Number(rgbMatch[2]), b: Number(rgbMatch[3]) };
+    return {
+      r: Number(rgbMatch[1]),
+      g: Number(rgbMatch[2]),
+      b: Number(rgbMatch[3]),
+    };
   }
   // Fallback: unknown syntax → white so nothing crashes.
   return { r: 255, g: 255, b: 255 };
@@ -90,7 +95,11 @@ export function GradientSurface({
   const session = useOverlaySession();
   const rect = useNodeRect(node);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const [colorEditor, setColorEditor] = useState<{ index: number; x: number; y: number } | null>(null);
+  const [colorEditor, setColorEditor] = useState<{
+    index: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const rectRef = useRef(rect);
   rectRef.current = rect;
   const liveRef = useRef(liveValue);
@@ -143,28 +152,35 @@ export function GradientSurface({
         const t = Math.max(0, Math.min(1, local / rectNow.width));
         // Dragging vertically off the bar removes the stop (as long as we
         // still have at least MIN_STOPS).
-        const dy = Math.abs(ev.clientY - (rectNow.bottom + GRADIENT_SURFACE.barMarginTop + GRADIENT_SURFACE.barHeight / 2));
+        const dy = Math.abs(
+          ev.clientY -
+            (rectNow.bottom +
+              GRADIENT_SURFACE.barMarginTop +
+              GRADIENT_SURFACE.barHeight / 2),
+        );
         const current = liveRef.current;
         if (dy > 40 && current.length > MIN_STOPS) {
           commit(current.filter((_, i) => i !== index));
-          window.removeEventListener('pointermove', move);
-          window.removeEventListener('pointerup', up);
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
           return;
         }
-        const next = current.map((s, i) => (i === index ? { ...s, stop: t } : s));
+        const next = current.map((s, i) =>
+          i === index ? { ...s, stop: t } : s,
+        );
         commit(next);
       };
       const up = (): void => {
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // pointer already released
         }
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [commit],
   );
@@ -193,7 +209,7 @@ export function GradientSurface({
         fill="rgba(94, 234, 212, 0.001)"
         stroke="none"
         pointerEvents="all"
-        style={{ cursor: 'copy' }}
+        style={{ cursor: "copy" }}
         onClick={onBarClick}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -213,7 +229,7 @@ export function GradientSurface({
               fill="rgba(94, 234, 212, 0.001)"
               stroke="none"
               pointerEvents="all"
-              style={{ cursor: 'grab' }}
+              style={{ cursor: "grab" }}
               onPointerDown={startStopDrag(i)}
               onDoubleClick={(e) => {
                 e.preventDefault();
@@ -237,9 +253,11 @@ export function GradientSurface({
         <ColorPickerPopover
           x={colorEditor.x}
           y={colorEditor.y}
-          color={stops[colorEditor.index]?.color ?? '#ffffff'}
+          color={stops[colorEditor.index]?.color ?? "#ffffff"}
           onChange={(color) => {
-            const next = liveRef.current.map((s, i) => (i === colorEditor.index ? { ...s, color } : s));
+            const next = liveRef.current.map((s, i) =>
+              i === colorEditor.index ? { ...s, color } : s,
+            );
             commit(next);
           }}
           onClose={() => setColorEditor(null)}
@@ -250,7 +268,7 @@ export function GradientSurface({
         y={barY + barHeight + 4}
         width={barWidth + 300}
         height={28}
-        style={{ overflow: 'visible', pointerEvents: 'none' }}
+        style={{ overflow: "visible", pointerEvents: "none" }}
       >
         <div
           style={{
@@ -259,7 +277,8 @@ export function GradientSurface({
             color: COLORS.neutralInkMuted,
           }}
         >
-          Click to add a stop · double-click a stop to change colour · drag off to remove (min {String(MIN_STOPS)})
+          Click to add a stop · double-click a stop to change colour · drag off
+          to remove (min {String(MIN_STOPS)})
         </div>
       </foreignObject>
       {menu !== null && (
@@ -268,7 +287,7 @@ export function GradientSurface({
           y={0}
           width={window.innerWidth}
           height={window.innerHeight}
-          style={{ overflow: 'visible', pointerEvents: 'none' }}
+          style={{ overflow: "visible", pointerEvents: "none" }}
         >
           <SurfaceContextMenu
             x={menu.x}
@@ -284,4 +303,3 @@ export function GradientSurface({
     </>
   );
 }
-

@@ -34,7 +34,7 @@ export class DaemonClient {
   private statusTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private statusInFlight = false;
-  private pendingInFlight = false;
+  private pendingInFlight: Promise<void> | null = null;
   private lastPendingJson: string | null = null;
   private statusHandlers = new Set<StatusHandler>();
   private pendingHandlers = new Set<PendingHandler>();
@@ -46,9 +46,9 @@ export class DaemonClient {
 
   private endpoint(path: string): string {
     const base = new URL(this.baseUrl);
-    const token = base.searchParams.get('token');
+    const token = base.searchParams.get("token");
     const url = new URL(path, base.origin);
-    if (token !== null) url.searchParams.set('token', token);
+    if (token !== null) url.searchParams.set("token", token);
     return url.href;
   }
 
@@ -98,7 +98,7 @@ export class DaemonClient {
   // next timer tick.
   async refresh(): Promise<void> {
     await this.pollStatus();
-    await this.pollPending();
+    await this.pollPending(true);
   }
 
   async select(req: SelectRequest): Promise<boolean> {
@@ -109,13 +109,13 @@ export class DaemonClient {
     const entry = await this.post("/commit", req);
     if (entry === null || typeof (entry as { id?: unknown }).id !== "string")
       return null;
-    await this.pollPending();
+    await this.pollPending(true);
     return { id: (entry as { id: string }).id };
   }
 
   async ack(id: string): Promise<boolean> {
     const ok = (await this.post("/ack", { id })) !== null;
-    if (ok) await this.pollPending();
+    if (ok) await this.pollPending(true);
     return ok;
   }
 
@@ -130,7 +130,7 @@ export class DaemonClient {
     }
     let status: StatusResponse | null = null;
     try {
-      const res = await fetch(this.endpoint('/status'), FETCH_OPTIONS);
+      const res = await fetch(this.endpoint("/status"), FETCH_OPTIONS);
       if (res.ok) status = (await res.json()) as StatusResponse;
     } catch (err) {
       this.log(`status poll failed: ${String(err)}`);
@@ -148,8 +148,22 @@ export class DaemonClient {
     this.scheduleStatus(delay);
   }
 
-  private async pollPending(): Promise<void> {
-    if (this.pendingInFlight) return;
+  private async pollPending(afterCurrent = false): Promise<void> {
+    if (this.pendingInFlight !== null) {
+      await this.pendingInFlight;
+      if (afterCurrent) await this.pollPending();
+      return;
+    }
+    const flight = this.performPendingPoll();
+    this.pendingInFlight = flight;
+    try {
+      await flight;
+    } finally {
+      if (this.pendingInFlight === flight) this.pendingInFlight = null;
+    }
+  }
+
+  private async performPendingPoll(): Promise<void> {
     if (this.pendingTimer !== null) {
       clearTimeout(this.pendingTimer);
       this.pendingTimer = null;
@@ -159,9 +173,8 @@ export class DaemonClient {
       this.schedulePending(PENDING_POLL_MS);
       return;
     }
-    this.pendingInFlight = true;
     try {
-      const res = await fetch(this.endpoint('/pending'), FETCH_OPTIONS);
+      const res = await fetch(this.endpoint("/pending"), FETCH_OPTIONS);
       if (res.ok) {
         const entries = (await res.json()) as JournalEntry[];
         const json = JSON.stringify(entries);
@@ -174,7 +187,6 @@ export class DaemonClient {
       this.log(`pending poll failed: ${String(err)}`);
       this.setConnected(false, null);
     }
-    this.pendingInFlight = false;
     this.schedulePending(this.active ? PENDING_POLL_MS : STATUS_POLL_MS);
   }
 

@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 
-import { getBridge } from '../bridge.js';
-import { NodeHighlight } from './highlight.js';
-import { useOverlaySession } from './context.js';
-import { humanizeEffectName } from './display-name.js';
-import { useSessionState } from './hooks.js';
+import { getBridge } from "../bridge.js";
+import { NodeHighlight } from "./highlight.js";
+import { useOverlaySession } from "./context.js";
+import { humanizeEffectName } from "./display-name.js";
+import { useSessionState } from "./hooks.js";
 
 // Two consecutive clicks are treated as a drill gesture when they land close
 // together in both time and space. The window is deliberately looser than the
@@ -27,12 +27,19 @@ interface Props {
 // stopPropagation) so selecting never triggers the app's own click
 // handlers; hover/move events flow through untouched so the app's
 // animations play exactly as they do with MotionWorks off.
-export function SelectionEngine({ active, selectedEffectId }: Props): React.JSX.Element | null {
+export function SelectionEngine({
+  active,
+  selectedEffectId,
+}: Props): React.JSX.Element | null {
   const session = useOverlaySession();
   const state = useSessionState();
-  const [hover, setHover] = useState<{ node: HTMLElement; id: string } | null>(null);
+  const [hover, setHover] = useState<{ node: HTMLElement; id: string } | null>(
+    null,
+  );
   const [selectedNode, setSelectedNode] = useState<HTMLElement | null>(() =>
-    selectedEffectId === null ? null : getBridge().getNode(selectedEffectId) ?? null,
+    selectedEffectId === null
+      ? null
+      : (getBridge().getNode(selectedEffectId) ?? null),
   );
 
   // Last-click state so we can tell a follow-up click (same spot, quick) from
@@ -103,7 +110,9 @@ export function SelectionEngine({ active, selectedEffectId }: Props): React.JSX.
       // single click grabs. The deepest element is only relevant once the
       // designer commits to double-clicking.
       const stack = registeredStackAt(event.clientX, event.clientY);
-      setHover(stack.length === 0 ? null : { node: stack[0]!.node, id: stack[0]!.id });
+      setHover(
+        stack.length === 0 ? null : { node: stack[0]!.node, id: stack[0]!.id },
+      );
     };
 
     const onDown = (event: PointerEvent): void => {
@@ -112,7 +121,8 @@ export function SelectionEngine({ active, selectedEffectId }: Props): React.JSX.
       // flow through to the app untouched.
       if (!event.isTrusted) return;
       // Overlay-owned UI (toolbox, scrubber, menus) handles its own clicks.
-      if (event.target instanceof Element && isOverlayNode(event.target)) return;
+      if (event.target instanceof Element && isOverlayNode(event.target))
+        return;
 
       const stack = registeredStackAt(event.clientX, event.clientY);
       event.preventDefault();
@@ -144,7 +154,8 @@ export function SelectionEngine({ active, selectedEffectId }: Props): React.JSX.
     // the deepest registered node at the point.
     const onDblClick = (event: MouseEvent): void => {
       if (!event.isTrusted) return;
-      if (event.target instanceof Element && isOverlayNode(event.target)) return;
+      if (event.target instanceof Element && isOverlayNode(event.target))
+        return;
       const stack = registeredStackAt(event.clientX, event.clientY);
       event.preventDefault();
       event.stopPropagation();
@@ -160,20 +171,21 @@ export function SelectionEngine({ active, selectedEffectId }: Props): React.JSX.
     // exempts them.
     const onClick = (event: MouseEvent): void => {
       if (!event.isTrusted) return;
-      if (event.target instanceof Element && isOverlayNode(event.target)) return;
+      if (event.target instanceof Element && isOverlayNode(event.target))
+        return;
       event.preventDefault();
       event.stopPropagation();
     };
 
-    document.addEventListener('pointermove', onMove, { capture: true });
-    document.addEventListener('pointerdown', onDown, { capture: true });
-    document.addEventListener('click', onClick, { capture: true });
-    document.addEventListener('dblclick', onDblClick, { capture: true });
+    document.addEventListener("pointermove", onMove, { capture: true });
+    document.addEventListener("pointerdown", onDown, { capture: true });
+    document.addEventListener("click", onClick, { capture: true });
+    document.addEventListener("dblclick", onDblClick, { capture: true });
     return () => {
-      document.removeEventListener('pointermove', onMove, { capture: true });
-      document.removeEventListener('pointerdown', onDown, { capture: true });
-      document.removeEventListener('click', onClick, { capture: true });
-      document.removeEventListener('dblclick', onDblClick, { capture: true });
+      document.removeEventListener("pointermove", onMove, { capture: true });
+      document.removeEventListener("pointerdown", onDown, { capture: true });
+      document.removeEventListener("click", onClick, { capture: true });
+      document.removeEventListener("dblclick", onDblClick, { capture: true });
       setHover(null);
     };
   }, [active, session]);
@@ -199,12 +211,16 @@ export function SelectionEngine({ active, selectedEffectId }: Props): React.JSX.
         />
       )}
       {selectedNode !== null && (
-        <NodeHighlight node={selectedNode} color="rgb(255, 255, 255)" label={selectedLabel} />
+        <NodeHighlight
+          node={selectedNode}
+          color="rgb(255, 255, 255)"
+          label={selectedLabel}
+        />
       )}
     </>
   );
 }
 
 function isOverlayNode(node: Element): boolean {
-  return node.closest('[data-motionworks-overlay]') !== null;
+  return node.closest("[data-motionworks-overlay]") !== null;
 }

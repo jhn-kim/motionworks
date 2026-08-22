@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { MotionWorksParam } from '../../../shared/index.js';
+import type { MotionWorksParam } from "../../../shared/index.js";
 
-import { useOverlaySession } from '../context.js';
-import { COLORS, HANDLES, RADIUS_SURFACE, STROKE } from '../theme.js';
-import { NumericEditor, SurfaceContextMenu } from './shared/context-menu.js';
+import { useOverlaySession } from "../context.js";
+import { COLORS, HANDLES, RADIUS_SURFACE, STROKE } from "../theme.js";
+import { NumericEditor, SurfaceContextMenu } from "./shared/context-menu.js";
 
 // Applies the spatial-radius clamping rule from MANIPULATION_SURFACES.md:
 // minimum is max(param.min, 8), maximum is min(param.max, viewport short side).
-export function clampRadius(raw: number, param: MotionWorksParam, viewportShort: number): number {
+export function clampRadius(
+  raw: number,
+  param: MotionWorksParam,
+  viewportShort: number,
+): number {
   const min = Math.max(param.min ?? 0, RADIUS_SURFACE.minHandlePx);
   const cap = Math.min(param.max ?? Number.POSITIVE_INFINITY, viewportShort);
   const upper = Math.max(min, cap);
@@ -74,33 +78,41 @@ export function SpatialRadiusSurface({
       // bbox mid-drag and creates a runaway feedback loop.
       const dragCenter = centerOfNode(node);
       const move = (ev: PointerEvent): void => {
-        const raw = Math.hypot(ev.clientX - dragCenter.x, ev.clientY - dragCenter.y);
+        const raw = Math.hypot(
+          ev.clientX - dragCenter.x,
+          ev.clientY - dragCenter.y,
+        );
         // spatial-radius values are pixels; sub-pixel precision just noises
         // up changesets and reads badly in the panel.
-        const clamped = Math.round(clampRadius(raw, param, viewportShortSide()));
+        const clamped = Math.round(
+          clampRadius(raw, param, viewportShortSide()),
+        );
         session.manipulate(effectId, paramKey, clamped);
       };
       const up = (): void => {
         setDragging(false);
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
           // pointer already released
         }
       };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
     },
     [effectId, node, param, paramKey, session],
   );
 
-  const handleContextMenu = useCallback((event: React.MouseEvent<SVGCircleElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setMenu({ x: event.clientX, y: event.clientY });
-  }, []);
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent<SVGCircleElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setMenu({ x: event.clientX, y: event.clientY });
+    },
+    [],
+  );
 
   const submitEdit = useCallback(
     (raw: string) => {
@@ -140,7 +152,7 @@ export function SpatialRadiusSurface({
         // that. `all` forces hit-testing regardless of the near-transparent
         // fill and lets pointerdown reach onPointerDown.
         pointerEvents="all"
-        style={{ cursor: dragging ? 'grabbing' : 'grab' }}
+        style={{ cursor: dragging ? "grabbing" : "grab" }}
         onPointerDown={handlePointerDown}
         onContextMenu={handleContextMenu}
       />
@@ -157,9 +169,13 @@ export function SpatialRadiusSurface({
           y={handleY - HANDLES.hitRadius}
           width={120}
           height={30}
-          style={{ overflow: 'visible' }}
+          style={{ overflow: "visible" }}
         >
-          <NumericEditor initial={liveValue} onSubmit={submitEdit} onCancel={() => setEditing(false)} />
+          <NumericEditor
+            initial={liveValue}
+            onSubmit={submitEdit}
+            onCancel={() => setEditing(false)}
+          />
         </foreignObject>
       )}
       {menu !== null && (
@@ -168,7 +184,7 @@ export function SpatialRadiusSurface({
           y={0}
           width={window.innerWidth}
           height={window.innerHeight}
-          style={{ overflow: 'visible', pointerEvents: 'none' }}
+          style={{ overflow: "visible", pointerEvents: "none" }}
         >
           <SurfaceContextMenu
             x={menu.x}
@@ -194,6 +210,6 @@ function centerOfNode(node: HTMLElement): { x: number; y: number } {
 }
 
 function viewportShortSide(): number {
-  if (typeof window === 'undefined') return 800;
+  if (typeof window === "undefined") return 800;
   return Math.min(window.innerWidth, window.innerHeight);
 }
