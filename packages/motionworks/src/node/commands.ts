@@ -1,6 +1,7 @@
 import type { JournalEntry, StatusResponse } from '../shared/index.js';
 
 import { ackEntries, readJournal, readSelected } from './journal.js';
+import { applyCssChanges } from './css-write.js';
 
 export function formatChanges(entries: JournalEntry[], mode: 'agent' | 'brief' | 'json'): string {
   if (mode === 'json') return JSON.stringify(entries, null, 2);
@@ -52,4 +53,15 @@ export async function formatStatus(root: string, port: number): Promise<string> 
 
 export async function pendingChanges(root: string): Promise<JournalEntry[]> {
   return (await readJournal(root)).filter((entry) => entry.status !== 'applied');
+}
+
+export async function runRevert(root: string, id: string): Promise<string[]> {
+  const entry = (await readJournal(root)).find((candidate) => candidate.id === id);
+  if (entry === undefined) throw new Error(`Unknown change id: ${id}`);
+  if (entry.status !== 'applied') throw new Error(`Change ${id} has not been applied.`);
+  const inverse: JournalEntry = { ...entry, changes: entry.changes.map((change) => ({ ...change, from: change.to, to: change.from, fromCss: change.toCss, toCss: change.fromCss })) };
+  const result = await applyCssChanges(root, inverse);
+  if (result.kind === 'skipped') throw new Error(result.reason);
+  await ackEntries(root, [id]);
+  return result.files;
 }

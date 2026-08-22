@@ -223,12 +223,12 @@ export const SCRUBBER = {
 
 // Reserved keys the overlay writes into update() calls.
 export const RESERVED_KEYS = {
-  scrub: "__motionworksScrub",
-  active: "__motionworksActive",
+  scrub: "scrub",
+  active: "motionworks:active",
   // Replay button: value is a fresh timestamp each press so update() always
   // sees a change. Effects with capabilities.replay re-run their entrance.
-  replay: "__motionworksReplay",
-};
+  replay: "replay",
+} as const;
 
 // Surface capability flag on a schema. When true, the scrubber is shown for
 // the effect; otherwise it stays hidden (effects that don't handle the

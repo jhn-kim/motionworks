@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -10,7 +10,7 @@ let daemon: RunningDaemon | null;
 beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'motionworks-daemon-')); daemon = await startDaemon({ projectRoot: root, port: 0 }); });
 afterEach(async () => { await daemon?.stop(); await rm(root, { recursive: true, force: true }); });
 
-const commit = (page = '/demo') => ({ page, effectId: 'card#1', effectName: 'Card', elementSelector: '.card', changes: [{ param: 'radius', type: 'spatial-radius', from: 100, to: 120 }] });
+const commit = (page = '/demo') => ({ page, effectId: 'card#1', effectName: 'Card', elementSelector: '.card', changes: [{ param: 'radius', type: 'spatial-radius', from: 100, to: 120, var: '--mw-radius', fromCss: '100px', toCss: '120px' }] });
 const request = (path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${daemon!.port}${path}`, init);
 
 describe('daemon', () => {
@@ -24,6 +24,13 @@ describe('daemon', () => {
     const ack = await request('/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: entry.id }) });
     expect(ack.status).toBe(200);
     expect(await (await request('/pending')).json()).toEqual([]);
+  });
+
+  it('directly applies an unambiguous CSS commit', async () => {
+    await writeFile(join(root, 'motion.css'), '.card { --mw-radius: 100px; }\n');
+    const created = await request('/commit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(commit()) });
+    expect(created.status).toBe(201); expect((await created.json() as { status: string }).status).toBe('applied');
+    expect(await readFile(join(root, 'motion.css'), 'utf8')).toContain('--mw-radius: 120px');
   });
 
   it('handles preflight and rejects remote origins', async () => {

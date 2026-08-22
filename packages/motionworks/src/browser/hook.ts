@@ -7,17 +7,12 @@ import { getCallerComponentName, makeEffectId } from './ids.js';
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 
-// Cheap identity fingerprint over the schema's baseline values so HMR that
-// only changes a named constant (a common agent writeback) triggers
-// re-registration. Nested values (spring/gradient/path) are covered too.
-// Purely for dep-array equality; readers of the schema keep going through
-// registrationRef.current, so precise JSON key ordering doesn't matter.
 function fingerprintRegistration(reg: MotionWorksRegistration): string {
   const parts: string[] = [reg.name];
   const keys = Object.keys(reg.params).sort();
   for (const key of keys) {
     const p = reg.params[key];
-    parts.push(key, p?.type ?? '', JSON.stringify(p?.value));
+    parts.push(key, p?.type ?? '', p?.var ?? '');
   }
   return parts.join('|');
 }
@@ -34,10 +29,7 @@ export function useMotionWorks<T extends Element>(
   registration: MotionWorksRegistration,
 ): void {
   const componentNameRef = useRef<string | null>(null);
-  if (IS_DEV && componentNameRef.current === null) {
-    componentNameRef.current = getCallerComponentName();
-  }
-
+  if (IS_DEV && componentNameRef.current === null) componentNameRef.current = getCallerComponentName();
   // Kept up to date on every render so the wrapped update fn below always
   // dispatches to the latest closure — even when we choose not to
   // re-register on every render (which would churn the WS).
@@ -51,24 +43,12 @@ export function useMotionWorks<T extends Element>(
 
   useEffect(() => {
     if (!IS_DEV) return;
-    const componentName = componentNameRef.current ?? 'Anonymous';
     const current = registrationRef.current;
-    const id = makeEffectId(componentName, current.name);
+    const id = makeEffectId(componentNameRef.current ?? 'Anonymous', current.name);
     const bridge = getBridge();
     const node = (ref.current as unknown as HTMLElement | null) ?? null;
 
-    // Only wrap update when the user actually provided one — otherwise the
-    // core validator's read-only branch (rule 4) never fires.
-    const stable: MotionWorksRegistration =
-      typeof current.update === 'function'
-        ? {
-            ...current,
-            update: (newParams) => {
-              registrationRef.current.update?.(newParams);
-            },
-          }
-        : { ...current };
-    bridge.register(id, node, stable);
+    bridge.register(id, node, current);
     return () => {
       bridge.unregister(id, node);
     };

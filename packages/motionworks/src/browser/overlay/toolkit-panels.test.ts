@@ -5,7 +5,7 @@ import { roundToStep, sliderBoundsFor, stepForRange } from './toolkit-panels.js'
 describe('sliderBoundsFor', () => {
   it('uses the schema min/max when provided', () => {
     const bounds = sliderBoundsFor(
-      { type: 'spatial-radius', value: 120, min: 20, max: 400 },
+      { type: 'spatial-radius', min: 20, max: 400 },
       'spatial-radius',
     );
     expect(bounds.min).toBe(20);
@@ -14,16 +14,16 @@ describe('sliderBoundsFor', () => {
   });
 
   it('falls back to per-type ranges when min/max are absent', () => {
-    const decay = sliderBoundsFor({ type: 'temporal-decay', value: 0.5 }, 'temporal-decay');
+    const decay = sliderBoundsFor({ type: 'temporal-decay' }, 'temporal-decay');
     expect(decay).toEqual({ min: 0, max: 1, step: 0.01 });
 
-    const stagger = sliderBoundsFor({ type: 'stagger', value: 90 }, 'stagger');
+    const stagger = sliderBoundsFor({ type: 'stagger' }, 'stagger');
     expect(stagger).toEqual({ min: 0, max: 600, step: 1 });
   });
 
   it('rejects inverted schema bounds (validation rule 5) and uses the fallback', () => {
     const bounds = sliderBoundsFor(
-      { type: 'scalar', value: 0.5, min: 5, max: 1 },
+      { type: 'scalar', min: 5, max: 1 },
       'scalar',
     );
     expect(bounds).toEqual({ min: 0, max: 1, step: 0.01 });

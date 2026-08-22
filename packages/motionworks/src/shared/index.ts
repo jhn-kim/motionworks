@@ -5,12 +5,13 @@ export type {
   MotionWorksEffect,
   MotionWorksParam,
   MotionWorksRegistration,
+  MotionWorksRuntimeParam,
   ParameterType,
   PathPoint,
-  SourceHint,
   SpringValue,
   TypeCorrection,
 } from "./types.js";
+export { cssValuesEqual, decodeCssValue, defaultUnitFor, encodeCssValue, formatNumber, KEYWORD_CURVES, parseEasing } from './css-values.js';
 export type {
   CommitRequest,
   JournalChange,

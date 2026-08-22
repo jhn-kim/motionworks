@@ -41,17 +41,11 @@ export interface PathPoint {
 
 export interface MotionWorksParam {
   type: ParameterType;
-  value: unknown;
   label?: string;
   min?: number;
   max?: number;
   unit?: string;
-}
-
-export interface SourceHint {
-  file: string;
-  variable?: string;
-  line?: number;
+  var?: string;
 }
 
 // Optional per-effect capability flags. Opt-in signals for global overlay
@@ -74,19 +68,20 @@ export interface MotionWorksCapabilities {
 export interface MotionWorksRegistration {
   name: string;
   params: Record<string, MotionWorksParam>;
-  // Optional so validation can detect and flag its absence (rule 4).
-  update?: (params: Record<string, unknown>) => void;
-  sourceHints?: Record<string, SourceHint>;
   capabilities?: MotionWorksCapabilities;
 }
 
-// Wire / storage form: serialisable, carries id and readOnly flag, no update fn.
+export interface MotionWorksRuntimeParam extends MotionWorksParam {
+  value: unknown;
+  var: string;
+  cssUnit: string;
+  bound: boolean;
+}
+
 export interface MotionWorksEffect {
   id: string;
   name: string;
-  params: Record<string, MotionWorksParam>;
-  readOnly: boolean;
-  sourceHints?: Record<string, SourceHint>;
+  params: Record<string, MotionWorksRuntimeParam>;
   capabilities?: MotionWorksCapabilities;
 }
 

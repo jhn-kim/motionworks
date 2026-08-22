@@ -1,117 +1,27 @@
-import { validateRegistration } from "./validate.js";
-import type { MotionWorksEffect, MotionWorksRegistration } from "./types.js";
+import { validateRegistration } from './validate.js';
+import type { MotionWorksEffect, MotionWorksRegistration, MotionWorksRuntimeParam } from './types.js';
 
-interface StoredEffect {
-  effect: MotionWorksEffect;
-  update?: (params: Record<string, unknown>) => void;
-}
-
-export interface MotionWorksStateSnapshot {
-  effects: MotionWorksEffect[];
-  selectedEffectId: string | null;
-}
+export interface MotionWorksStateSnapshot { effects: MotionWorksEffect[]; selectedEffectId: string | null }
 
 export class MotionWorksStateManager {
-  private readonly effects = new Map<string, StoredEffect>();
+  private readonly effects = new Map<string, MotionWorksEffect>();
+  private readonly liveValues = new Map<string, Record<string, unknown>>();
   private selectedEffectId: string | null = null;
   private readonly listeners = new Set<() => void>();
-
-  // ── Subscription ─────────────────────────────────────────────────────────
-
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+  subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  private notify(): void { for (const listener of this.listeners) listener(); }
+  registerEffect(id: string, registration: MotionWorksRegistration, baseline: Record<string, MotionWorksRuntimeParam>): MotionWorksEffect {
+    const validated = validateRegistration(registration);
+    const params = Object.fromEntries(Object.entries(validated.params).flatMap(([key, spec]) => baseline[key] === undefined ? [] : [[key, { ...spec, ...baseline[key] }]]));
+    const effect: MotionWorksEffect = { id, name: registration.name, params, ...(registration.capabilities !== undefined && { capabilities: registration.capabilities }) };
+    this.effects.set(id, effect); this.liveValues.set(id, Object.fromEntries(Object.entries(params).map(([key, param]) => [key, param.value]))); this.notify(); return effect;
   }
-
-  private notify(): void {
-    for (const listener of this.listeners) {
-      listener();
-    }
-  }
-
-  // ── Registration ─────────────────────────────────────────────────────────
-
-  /** Register an effect from a local MotionWorksRegistration (includes update fn). */
-  registerEffect(
-    id: string,
-    registration: MotionWorksRegistration,
-  ): MotionWorksEffect {
-    const result = validateRegistration(registration);
-
-    const effect: MotionWorksEffect = {
-      id,
-      name: registration.name,
-      params: result.params,
-      readOnly: result.readOnly,
-      ...(registration.sourceHints !== undefined && {
-        sourceHints: registration.sourceHints,
-      }),
-      ...(registration.capabilities !== undefined && {
-        capabilities: registration.capabilities,
-      }),
-    };
-
-    this.effects.set(id, {
-      effect,
-      update: result.readOnly ? undefined : registration.update,
-    });
-
-    this.notify();
-    return effect;
-  }
-
-  /** Register an effect from its serialisable form (no update fn). */
-  registerEffectFromWire(effect: MotionWorksEffect): void {
-    this.effects.set(effect.id, { effect });
-    this.notify();
-  }
-
-  unregisterEffect(id: string): void {
-    if (!this.effects.has(id)) return;
-    this.effects.delete(id);
-    if (this.selectedEffectId === id) this.selectedEffectId = null;
-    this.notify();
-  }
-
-  // ── Selection ────────────────────────────────────────────────────────────
-
-  selectEffect(id: string | null): void {
-    if (id !== null && !this.effects.has(id)) return;
-    this.selectedEffectId = id;
-    this.notify();
-  }
-
-  // ── Live manipulation ─────────────────────────────────────────────────────
-
-  applyParamChange(effectId: string, param: string, value: unknown): void {
-    const stored = this.effects.get(effectId);
-    if (!stored) return;
-    stored.update?.({ [param]: value });
-    this.notify();
-  }
-
-
-  // ── Reads ─────────────────────────────────────────────────────────────────
-
-  getEffect(id: string): MotionWorksEffect | undefined {
-    return this.effects.get(id)?.effect;
-  }
-
-  getSelectedEffect(): MotionWorksEffect | null {
-    if (this.selectedEffectId === null) return null;
-    return this.effects.get(this.selectedEffectId)?.effect ?? null;
-  }
-
-  getAllEffects(): MotionWorksEffect[] {
-    return Array.from(this.effects.values()).map((s) => s.effect);
-  }
-
-  getSnapshot(): MotionWorksStateSnapshot {
-    return {
-      effects: this.getAllEffects(),
-      selectedEffectId: this.selectedEffectId,
-    };
-  }
+  registerEffectFromWire(effect: MotionWorksEffect): void { this.effects.set(effect.id, effect); this.notify(); }
+  unregisterEffect(id: string): void { if (!this.effects.delete(id)) return; this.liveValues.delete(id); if (this.selectedEffectId === id) this.selectedEffectId = null; this.notify(); }
+  selectEffect(id: string | null): void { if (id !== null && !this.effects.has(id)) return; this.selectedEffectId = id; this.notify(); }
+  applyParamChange(effectId: string, param: string, value: unknown): void { const values = this.liveValues.get(effectId); if (values === undefined) return; values[param] = value; this.notify(); }
+  getEffect(id: string): MotionWorksEffect | undefined { return this.effects.get(id); }
+  getSelectedEffect(): MotionWorksEffect | null { return this.selectedEffectId === null ? null : this.effects.get(this.selectedEffectId) ?? null; }
+  getAllEffects(): MotionWorksEffect[] { return [...this.effects.values()]; }
+  getSnapshot(): MotionWorksStateSnapshot { return { effects: this.getAllEffects(), selectedEffectId: this.selectedEffectId }; }
 }

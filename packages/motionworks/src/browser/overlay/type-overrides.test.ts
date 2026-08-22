@@ -8,9 +8,8 @@ function makeEffect(overrides: Partial<MotionWorksEffect> = {}): MotionWorksEffe
   return {
     id: 'e1',
     name: 'E',
-    readOnly: false,
     params: {
-      trail: { type: 'scalar', value: 0.5 },
+      trail: { type: 'scalar', value: 0.5, var: '--mw-trail', cssUnit: '', bound: true },
     },
     ...overrides,
   };
@@ -49,7 +48,7 @@ describe('TypeOverrideStore', () => {
     const store = new TypeOverrideStore();
     store.set('e1', 'trail', 'temporal-decay');
     const effect = makeEffect({
-      params: { trail: { type: 'temporal-decay', value: 0.5 } },
+      params: { trail: { type: 'temporal-decay', value: 0.5, var: '--mw-trail', cssUnit: '', bound: true } },
     });
     store.reconcile(effect);
     expect(store.get('e1', 'trail')).toBeNull();

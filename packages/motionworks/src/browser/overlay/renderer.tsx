@@ -12,6 +12,7 @@ import type { ParameterType } from "../../shared/index.js";
 import { getBridge } from "../bridge.js";
 import { findInteractiveNode } from "../dom-selector.js";
 import { startAutoDetect } from "./auto-detect.js";
+import { startDomRegistration } from './dom-registration.js';
 import { CanvasLayer } from "./canvas-layer.js";
 import { OverlaySessionContext, useOverlaySession } from "./context.js";
 import { type ArmedTool } from "./cursor-tool.js";
@@ -147,7 +148,9 @@ function OverlayShell(): React.JSX.Element {
   // as named, selectable, tunable effects (see auto-detect.ts).
   useEffect(() => {
     if (!active) return;
-    return startAutoDetect();
+    const stopAuto = startAutoDetect();
+    const stopDom = startDomRegistration();
+    return () => { stopAuto(); stopDom(); };
   }, [active]);
 
   useEffect(() => {

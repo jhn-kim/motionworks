@@ -1,0 +1,12 @@
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os'; import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { JournalEntry } from '../shared/index.js'; import { applyCssChanges, findDeclarations } from './css-write.js';
+let root: string; beforeEach(async () => { root = await mkdtemp(join(tmpdir(), 'mw-css-write-')); }); afterEach(async () => rm(root, { recursive: true, force: true }));
+const entry = (overrides: Partial<JournalEntry['changes'][number]> = {}): JournalEntry => ({ id: '1', createdAt: 1, origin: '', page: '/', effectId: 'card#1', effectName: 'Card', elementSelector: '.card', status: 'pending', changes: [{ param: 'radius', type: 'spatial-radius', from: 100, to: 120, var: '--mw-radius', fromCss: '100px', toCss: '120px', ...overrides }] });
+describe('CSS write', () => {
+  it('replaces only the value and preserves comments/whitespace', async () => { const file = join(root, 'a.css'); await writeFile(file, '.card { /*x*/ --mw-radius: 100px ; color:red }'); expect((await applyCssChanges(root, entry())).kind).toBe('applied'); expect(await readFile(file, 'utf8')).toBe('.card { /*x*/ --mw-radius: 120px ; color:red }'); });
+  it('skips ambiguity, mismatches, and shorthand', async () => { await writeFile(join(root, 'a.css'), '.a{--mw-radius:100px}.b{--mw-radius:100px}'); expect((await applyCssChanges(root, entry())).kind).toBe('skipped'); expect(await applyCssChanges(root, entry({ fromCss: '99px' }))).toMatchObject({ kind: 'skipped' }); expect(findDeclarations('.a{animation: spin 1s}', 'animation')).toEqual([]); });
+  it('narrows by source file and selector through nested media', async () => { await writeFile(join(root, 'a.css'), '.a{--mw-radius:100px}'); await writeFile(join(root, 'b.css'), '@media all{.card{--mw-radius:100px}}'); const result = await applyCssChanges(root, entry({ rule: { sourceFile: 'b.css', selectorText: '.card', sheetHref: '' } })); expect(result).toMatchObject({ kind: 'applied', files: ['b.css'] }); });
+  it('is all-or-nothing', async () => { const file = join(root, 'a.css'); await writeFile(file, '.card{--mw-radius:100px}'); const two = entry(); two.changes.push({ param: 'strength', type: 'scalar', from: 1, to: 2, var: '--mw-strength', fromCss: '1', toCss: '2' }); expect((await applyCssChanges(root, two)).kind).toBe('skipped'); expect(await readFile(file, 'utf8')).toContain('100px'); });
+});

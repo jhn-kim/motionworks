@@ -1,6 +1,7 @@
-import type { EasingCurveValue, MotionWorksRegistration } from '../../shared/index.js';
+import { parseEasing, type MotionWorksRegistration } from '../../shared/index.js';
 
 import { getBridge } from '../bridge.js';
+import { bindKeyframeEffect } from './css-apply.js';
 
 // Auto-registration of CSS keyframe animations. Anything running via
 // @keyframes is discovered through document.getAnimations() and registered
@@ -14,29 +15,6 @@ import { getBridge } from '../bridge.js';
 // Scope: CSSAnimation only. CSS transitions are transient (they exist only
 // while running), so registering them would flicker in and out of the
 // effect list; agents should register transition-based effects explicitly.
-
-const KEYWORD_CURVES: Record<string, EasingCurveValue> = {
-  linear: { x1: 0, y1: 0, x2: 1, y2: 1 },
-  ease: { x1: 0.25, y1: 0.1, x2: 0.25, y2: 1 },
-  'ease-in': { x1: 0.42, y1: 0, x2: 1, y2: 1 },
-  'ease-out': { x1: 0, y1: 0, x2: 0.58, y2: 1 },
-  'ease-in-out': { x1: 0.42, y1: 0, x2: 0.58, y2: 1 },
-};
-
-function parseEasing(easing: string): EasingCurveValue | null {
-  const keyword = KEYWORD_CURVES[easing.trim()];
-  if (keyword !== undefined) return keyword;
-  const match = /^cubic-bezier\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)$/.exec(
-    easing.trim(),
-  );
-  if (match === null) return null;
-  return {
-    x1: Number(match[1]),
-    y1: Number(match[2]),
-    x2: Number(match[3]),
-    y2: Number(match[4]),
-  };
-}
 
 // A @keyframes name is only worth showing if a human wrote it to be read:
 // short, letters and dashes, no hash suffixes or framework prefixes
@@ -117,11 +95,12 @@ export function startAutoDetect(intervalMs = 1500): () => void {
       if (registered.has(id)) continue;
 
       const timing = keyframeEffect.getTiming();
+      bindKeyframeEffect(target, keyframeEffect, name);
       const params: MotionWorksRegistration['params'] = {};
       if (typeof timing.duration === 'number') {
         params['duration'] = {
           type: 'duration',
-          value: timing.duration,
+          var: 'animation-duration',
           min: 0,
           max: Math.max(3000, timing.duration * 2),
           label: 'Duration',
@@ -131,7 +110,7 @@ export function startAutoDetect(intervalMs = 1500): () => void {
       if (typeof timing.delay === 'number' && timing.delay > 0) {
         params['delay'] = {
           type: 'duration',
-          value: timing.delay,
+          var: 'animation-delay',
           min: 0,
           max: Math.max(2000, timing.delay * 2),
           label: 'Delay',
@@ -140,27 +119,13 @@ export function startAutoDetect(intervalMs = 1500): () => void {
       }
       const curve = parseEasing(String(timing.easing ?? ''));
       if (curve !== null) {
-        params['easing'] = { type: 'easing-curve', value: curve, label: 'Easing' };
+        params['easing'] = { type: 'easing-curve', var: 'animation-timing-function', label: 'Easing' };
       }
       if (Object.keys(params).length === 0) continue;
 
       const registration: MotionWorksRegistration = {
         name: displayNameFor(name, keyframeEffect),
         params,
-        update: (next) => {
-          const patch: OptionalEffectTiming = {};
-          if (typeof next['duration'] === 'number') patch.duration = next['duration'];
-          if (typeof next['delay'] === 'number') patch.delay = next['delay'];
-          const easing = next['easing'] as EasingCurveValue | undefined;
-          if (
-            easing !== undefined &&
-            typeof easing === 'object' &&
-            typeof easing.x1 === 'number'
-          ) {
-            patch.easing = `cubic-bezier(${String(easing.x1)}, ${String(easing.y1)}, ${String(easing.x2)}, ${String(easing.y2)})`;
-          }
-          if (Object.keys(patch).length > 0) keyframeEffect.updateTiming(patch);
-        },
       };
       bridge.register(id, target, registration);
       registered.set(id, { node: target });

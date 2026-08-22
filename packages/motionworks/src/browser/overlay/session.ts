@@ -9,6 +9,9 @@ import {
 } from "../../shared/index.js";
 
 import { getBridge, type Bridge } from "../bridge.js";
+import { EVENTS } from '../css-bindings.js';
+import { applyLive, findDeclaringRule, restoreLive, watchStylesheets } from './css-apply.js';
+import { encodeCssValue } from '../../shared/css-values.js';
 import { deepEqual } from "../deep-equal.js";
 import { describeNode, findInteractiveNode } from "../dom-selector.js";
 import { DaemonClient } from "./daemon-client.js";
@@ -45,6 +48,7 @@ export class OverlaySession {
   private pendingListeners = new Set<() => void>();
   private pendingVersion = 0;
   private applyingOwnChange = false;
+  private stylesUnsub: (() => void) | null = null;
 
   constructor({ daemonUrl, debug = false }: OverlaySessionOptions) {
     this.bridge = getBridge();
@@ -77,6 +81,7 @@ export class OverlaySession {
     // Attach after subscriptions are ready: queued hook registrations are
     // the first chance to reconcile and re-apply a hydrated local diff.
     this.bridge.attach(this.state);
+    this.stylesUnsub = watchStylesheets(() => this.refreshBaselines());
     this.daemon.start();
   }
 
@@ -93,6 +98,8 @@ export class OverlaySession {
     this.diffUnsub = null;
     this.statusUnsub = null;
     this.pendingUnsub = null;
+    this.stylesUnsub?.();
+    this.stylesUnsub = null;
     this.knownEffectIds.clear();
     this.connectionListeners.clear();
     this.cachedSnapshot = null;
@@ -143,6 +150,20 @@ export class OverlaySession {
       effect.params[param]?.value,
       value,
     );
+    const selected = this.bridge.getNode(effectId);
+    if (selected !== undefined) {
+      const selectedInstance = this.bridge.getInstance(effectId, selected);
+      const binding = selectedInstance?.bindings[param];
+      const spec = effect.params[param];
+      if (binding !== undefined && spec !== undefined) {
+        applyLive(selected, spec, binding, value);
+        for (const instance of this.bridge.getInstances(effectId)) {
+          if (instance.node === selected) continue;
+          const siblingBinding = instance.bindings[param];
+          if (siblingBinding !== undefined && siblingBinding.bound && getComputedStyle(instance.node).getPropertyValue(siblingBinding.var).trim() === encodeCssValue(spec.type, effect.params[param]!.value, siblingBinding.unit)) applyLive(instance.node, spec, siblingBinding, value);
+        }
+      }
+    }
     this.applyOwnChange(effectId, param, value);
   }
 
@@ -160,12 +181,12 @@ export class OverlaySession {
     }
   }
 
-  sendReserved(effectId: string | null, key: string, value: unknown): void {
+  sendReserved(effectId: string | null, key: 'replay' | 'scrub', value: unknown): void {
     const targets =
       effectId === null
         ? this.state.getAllEffects().map((effect) => effect.id)
         : [effectId];
-    for (const id of targets) this.applyOwnChange(id, key, value);
+    for (const id of targets) { const node = this.bridge.getNode(id); if (node !== undefined) node.dispatchEvent(new CustomEvent(EVENTS[key], { bubbles: true, detail: value })); }
   }
 
   replayInteraction(effectId: string): void {
@@ -189,6 +210,8 @@ export class OverlaySession {
 
   holdBaseline(effectId: string, hold: boolean): void {
     for (const [param, diff] of Object.entries(this.diffs.getDiff(effectId))) {
+      const effect = this.state.getEffect(effectId); const node = this.bridge.getNode(effectId); const instance = node === undefined ? undefined : this.bridge.getInstance(effectId, node); const spec = effect?.params[param]; const binding = instance?.bindings[param];
+      if (node !== undefined && spec !== undefined && binding !== undefined) applyLive(node, spec, binding, hold ? diff.from : diff.to);
       this.applyOwnChange(effectId, param, hold ? diff.from : diff.to);
     }
   }
@@ -199,6 +222,7 @@ export class OverlaySession {
     const corrections = [
       ...(this.pendingCorrections.get(effectId)?.values() ?? []),
     ];
+    const node = this.bridge.getNode(effectId);
     const changes = Object.entries(this.diffs.getDiff(effectId)).flatMap(
       ([param, diff]) => {
         const spec = effect.params[param];
@@ -209,15 +233,15 @@ export class OverlaySession {
             type: this.resolvedType(effectId, param) ?? spec.type,
             from: diff.from,
             to: diff.to,
-            ...(effect.sourceHints?.[param] !== undefined && {
-              sourceHint: effect.sourceHints[param],
-            }),
+            var: spec.var,
+            fromCss: encodeCssValue(spec.type, diff.from, spec.cssUnit),
+            toCss: encodeCssValue(spec.type, diff.to, spec.cssUnit),
+            ...(node !== undefined && findDeclaringRule(node, spec.var) !== undefined && { rule: findDeclaringRule(node, spec.var) }),
           },
         ];
       },
     );
     if (changes.length === 0 && corrections.length === 0) return false;
-    const node = this.bridge.getNode(effectId);
     const request: CommitRequest = {
       page: typeof location === "undefined" ? "" : location.href,
       effectId,
@@ -289,6 +313,8 @@ export class OverlaySession {
       for (const [param, diff] of Object.entries(
         this.diffs.getDiff(effectId),
       )) {
+        const node = this.bridge.getNode(effectId); const instance = node === undefined ? undefined : this.bridge.getInstance(effectId, node); const binding = instance?.bindings[param];
+        if (node !== undefined && binding !== undefined) restoreLive(node, binding);
         this.applyOwnChange(effectId, param, diff.from);
       }
     }
@@ -375,6 +401,11 @@ export class OverlaySession {
     for (const id of this.knownEffectIds) {
       if (!currentIds.has(id)) this.knownEffectIds.delete(id);
     }
+  }
+
+  refreshBaselines(): void {
+    for (const [id, nodes] of this.bridge.getAllNodes()) for (const node of nodes) { const instance = this.bridge.getInstance(id, node); if (instance !== undefined) for (const binding of Object.values(instance.bindings)) restoreLive(node, binding); }
+    this.bridge.refresh();
   }
 
   isConnected(): boolean {

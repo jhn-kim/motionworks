@@ -6,6 +6,8 @@ import type { CommitRequest, JournalChange, JournalEntry, SelectRequest, StatusR
 import type { AgentSetting } from './config.js';
 import { applyCors } from './cors.js';
 import { ackEntries, appendEntry, pruneAppliedEntries, readJournal, writeSelected } from './journal.js';
+import { updateEntry } from './journal.js';
+import { applyCssChanges } from './css-write.js';
 
 const MAX_BODY = 1024 * 1024;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -51,6 +53,7 @@ function isCommit(value: unknown): value is CommitRequest {
     typeof value.effectName === 'string' && typeof value.elementSelector === 'string' &&
     Array.isArray(value.changes) && value.changes.every(isChange);
 }
+const ALLOWED_VARS = new Set(['animation-duration', 'animation-delay', 'animation-timing-function']);
 function isSelect(value: unknown): value is SelectRequest {
   return object(value) && typeof value.effectId === 'string' && typeof value.effectName === 'string' && typeof value.elementSelector === 'string';
 }
@@ -88,9 +91,17 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
       if (req.method === 'POST' && url.pathname === '/commit') {
         const value = await body(req);
         if (!isCommit(value)) return sendJson(res, 400, { error: 'Invalid commit request' });
+        if (value.changes.some((change) => change.var === undefined || (!change.var.startsWith('--mw-') && !ALLOWED_VARS.has(change.var)))) return sendJson(res, 400, { error: 'Commit contains an unsupported CSS property' });
         const entry: JournalEntry = { ...value, id: randomUUID(), createdAt: Date.now(), origin: req.headers.origin ?? '', status: 'pending' };
         await appendEntry(options.projectRoot, entry);
-        sendJson(res, 201, entry);
+        const result = await applyCssChanges(options.projectRoot, entry);
+        if (result.kind === 'applied') {
+          const applied = await updateEntry(options.projectRoot, entry.id, { status: 'applied', appliedAt: Date.now(), appliedBy: 'css', files: result.files, error: undefined });
+          sendJson(res, 201, applied);
+        } else {
+          const pending = await updateEntry(options.projectRoot, entry.id, { error: result.reason });
+          sendJson(res, 201, pending);
+        }
         return;
       }
       if (req.method === 'POST' && url.pathname === '/select') {

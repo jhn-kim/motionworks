@@ -5,7 +5,7 @@ import type { MotionWorksParam } from '../../../shared/index.js';
 import { clampRadius } from './spatial-radius.js';
 
 function param(overrides: Partial<MotionWorksParam> = {}): MotionWorksParam {
-  return { type: 'spatial-radius', value: 100, ...overrides };
+  return { type: 'spatial-radius', ...overrides };
 }
 
 describe('clampRadius', () => {

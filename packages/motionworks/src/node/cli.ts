@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { runSetup } from './setup.js';
 import { checkDrift } from './drift.js';
-import { formatChanges, formatStatus, pendingChanges, runAck } from './commands.js';
+import { formatChanges, formatStatus, pendingChanges, runAck, runRevert } from './commands.js';
 import { loadConfig, parsePort, type AgentSetting } from './config.js';
 import { startDaemon } from './daemon.js';
 import { PACKAGE_VERSION } from './version.js';
@@ -14,6 +14,7 @@ const HELP = `Usage:
   npx motionworks changes [--json|--brief]                    Show pending changes.
   npx motionworks ack <id>|--all                              Acknowledge changes.
   npx motionworks status                                      Show daemon and selection.
+  npx motionworks revert <id>                                 Revert an applied change.
   npx motionworks init [--yes] [--stanza-only]                Set up MotionWorks.
   npx motionworks help | --version
 `;
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
     return;
   }
   if (command === 'status') return void process.stdout.write(`${await formatStatus(process.cwd(), config.port)}\n`);
+  if (command === 'revert') { const id = args[1]; if (id === undefined) throw new Error('Usage: motionworks revert <id>'); const files = await runRevert(process.cwd(), id); process.stdout.write(`Reverted ${id} in ${files.join(', ')}.\n`); return; }
   if (command !== undefined && command !== 'serve') { process.stderr.write(`[motionworks] Unknown command: "${command}"\n\n${HELP}`); process.exitCode = 2; return; }
 
   const warning = await checkDrift({ cwd: process.cwd(), packageVersion: PACKAGE_VERSION });

@@ -1,4 +1,4 @@
-import type { ParameterType, SourceHint, TypeCorrection } from './types.js';
+import type { ParameterType, TypeCorrection } from './types.js';
 
 export type JournalStatus = 'pending' | 'agent-working' | 'applied';
 
@@ -11,7 +11,6 @@ export interface JournalChange {
   fromCss?: string;
   toCss?: string;
   rule?: { selectorText: string; sheetHref: string; sourceFile?: string };
-  sourceHint?: SourceHint;
 }
 
 export interface JournalEntry {

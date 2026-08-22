@@ -42,10 +42,9 @@ Browser-side: baseline read with `getComputedStyle(el).getPropertyValue('--mw-<k
 ## Slice dependency map
 
 ```
-0 → 1 → 2 → 2a (sweep) → 2b (consolidate) → ┬→ 3 (CSS contract + direct CSS write) ┐
-                                             └→ 4 (bundle, serve, ids, init)        ┴→ 5 (auto-agent) → 6 (guide + docs + release) → final sweep
+0 → 1 → 2 → 2a (sweep) → 2b (consolidate) → 3 (CSS contract + direct CSS write) → 4 (bundle, serve, ids, init) → 5 (auto-agent) → 6 (guide + docs + release) → final sweep
 ```
-0–2b: one agent, main working tree (deletions touch every package). 3 and 4: may run in parallel, each in its own `git worktree`. 5 and 6: one agent each, after both merge. First shippable point: after 2b (behaviour identical for React users, old contract still accepted). Second: after 3+4.
+0–2b: one agent, main working tree (deletions touch every package). Slice 4 depends on Slice 3 — its `standalone.ts` re-exports Slice 3's `css-bindings` helpers, so it cannot build until `css-bindings.ts` exists. Run them serially: Slice 3, commit to main, then Slice 4 off updated main. No worktrees needed. 5 and 6: one agent each. First shippable point: after 2b (behaviour identical for React users, old contract still accepted). Second: after 4.
 
 ## Playbook: running the rebuild with agents
 
@@ -56,10 +55,10 @@ Browser-side: baseline read with `getComputedStyle(el).getPropertyValue('--mw-<k
 **After every slice, before moving on:**
 1. Run `npm run build && npm run typecheck && npm test` yourself. All green or the slice is not done.
 2. Read the agent's report. It must list what it changed and any doc lines it says need updating (save those; Slice 6 needs them).
-3. `git add -A && git commit -m "Slice N: <one line>"` on `main` (or merge the worktree branch for Slices 3/4).
+3. `git add -A && git commit -m "Slice N: <one line>"` on `main`.
 4. Run the slice's "Verify" commands from the plan at least once by hand. For Slices 2–5 that means opening a page and clicking Apply.
 
-**Order and who can run in parallel:**
+**Order and agent assignment:**
 
 | Step | Agent | Where | Prompt |
 |---|---|---|---|
@@ -68,8 +67,8 @@ Browser-side: baseline read with `getComputedStyle(el).getPropertyValue('--mw-<k
 | 2 | one agent | main | slice prompt, N=2 |
 | 2a | one agent | main | sweep prompt (Slice 2a section) |
 | 2b | one agent | main | slice prompt, N=2b |
-| 3 ∥ 4 | two agents (e.g. Claude on 3, Codex on 4) | worktrees: `git worktree add ../<repo>-slice-3 -b slice-3` and `../<repo>-slice-4 -b slice-4` | slice prompt, N=3 / N=4, run inside each worktree |
-| merge | you | main | `git merge slice-3 && git merge slice-4`; if conflicts, use the conflict prompt below |
+| 3 | one agent | main | slice prompt, N=3 |
+| 4 | one agent | main | slice prompt, N=4 (after Slice 3 is committed) |
 | 5 | one agent | main | slice prompt, N=5 |
 | 6 | one agent | main | slice prompt, N=6; then confirm the doc proposals it reports and give the doc-write prompt |
 | final | one agent | main | sweep prompt again, then the release commands in Slice 6 |
@@ -77,10 +76,6 @@ Browser-side: baseline read with `getComputedStyle(el).getPropertyValue('--mw-<k
 **Slice prompt (the only prompt you need for 1, 2, 2b, 3, 4, 5, 6):**
 
 > Read `docs/plans/bridge-rebuild.md`. Implement **Slice N only**. Do not start other slices. Reuse the existing functions the plan names; do not re-implement them. Match the surrounding code style and test style (Vitest; temp dirs via `mkdtemp`, see `packages/mcp/src/init.test.ts`). Before finishing run `npm run build`, `npm run typecheck`, `npm test` and make them green. Do not edit anything under `docs/` or `MOTIONWORKS.md`; list needed doc changes in your report instead. If the plan is wrong or ambiguous, stop and report rather than improvising. End with a report: files created/modified/deleted, tests added, anything skipped and why, and doc lines that need updating.
-
-**Conflict prompt (after merging 3 and 4, only if `git merge` reports conflicts):**
-
-> `git status` shows merge conflicts between branches `slice-3` and `slice-4`. Read `docs/plans/bridge-rebuild.md` Slices 3 and 4. Resolve every conflict so that both slices' behaviour is preserved; do not drop either side's work. Then run `npm run build`, `npm run typecheck`, `npm test` green and report what you resolved.
 
 **Stuck prompt (when an agent's report says the plan is wrong or it stopped):**
 
@@ -99,8 +94,6 @@ Browser-side: baseline read with `getComputedStyle(el).getPropertyValue('--mw-<k
 Prompt (Claude Code or Codex, unchanged):
 
 > Read `docs/plans/bridge-rebuild.md`. Implement **Slice N only**. Do not start other slices. Reuse the existing functions the plan names; do not re-implement them. Match the surrounding code style and test style (Vitest; temp dirs via `mkdtemp`, see `packages/mcp/src/init.test.ts`). Before finishing run `npm run build`, `npm run typecheck`, `npm test` and make them green. Do not edit anything under `docs/` or `MOTIONWORKS.md`; list needed doc changes in your report instead. If the plan is wrong or ambiguous, stop and report rather than improvising.
-
-For parallel slices: `git worktree add ../<repo>-slice-3 -b slice-3` (and `-4`), run the agent inside that directory, merge back after tests pass.
 
 ---
 
@@ -229,6 +222,8 @@ Move `packages/core`, `packages/react`, `packages/mcp` into `packages/motionwork
 **Verify (manual):** convert `examples/demo` (`MagneticButton` reads `--mw-radius/--mw-strength/--mw-response` via `readParams` + `onParamsChange`; `CardGrid` listens for `motionworks:replay`; vars declared in `examples/demo/src/motion.css`). Drag → inline var + effect reacts → Apply → daemon edits `motion.css` → Vite swaps the style → `watchStylesheets` → baseline == `to` → auto-ack → journal empty. Then declare the var in a second file on purpose → hand-off notice.
 
 ## Slice 4 — Standalone bundle, `serve`, ids, non-React `init`
+
+Prerequisite: Slice 3 must be merged first — `src/browser/css-bindings.ts` and `src/shared/css-values.ts` come from Slice 3 and are re-exported here. Do not re-implement them.
 
 - `src/browser/standalone.ts`: exports `mount({daemonUrl?, debug?})` and the `css-bindings` helpers; side effect: auto-mount on `DOMContentLoaded` unless `document.currentScript.dataset.autoMount === 'false'`, with `daemonUrl = new URL(currentScript.src).origin`. Imports `OverlayRenderer` directly (no dynamic import).
 - `tsup.config.ts`: add the IIFE config `{ entry: {'motionworks.global': 'src/browser/standalone.ts'}, format:['iife'], globalName:'MotionWorks', platform:'browser', target:'es2020', noExternal:[/.*/], define:{'process.env.NODE_ENV':'"development"'}, minify:true, sourcemap:true, dts:false, clean:false, outExtension: () => ({js:'.js'}) }`. Package export `./motionworks.global.js`.

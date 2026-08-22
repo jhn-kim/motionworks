@@ -37,7 +37,7 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
       const move = (ev: PointerEvent): void => {
         const next = compute(ev.clientX);
         setTime(next);
-        session.manipulate(selectedEffect.id, RESERVED_KEYS.scrub, next);
+        session.sendReserved(selectedEffect.id, RESERVED_KEYS.scrub, next);
       };
       const up = (): void => {
         setDragging(false);
@@ -52,7 +52,7 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
       // Immediate update on the down event too so a click without drag registers.
       const initial = compute(event.clientX);
       setTime(initial);
-      session.manipulate(selectedEffect.id, RESERVED_KEYS.scrub, initial);
+      session.sendReserved(selectedEffect.id, RESERVED_KEYS.scrub, initial);
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', up);
     },
@@ -141,7 +141,7 @@ export function Scrubber({ active, selectedEffect }: Props): React.JSX.Element |
         onClick={() => {
           if (selectedEffect === null) return;
           setTime(0);
-          session.manipulate(selectedEffect.id, RESERVED_KEYS.scrub, 0);
+          session.sendReserved(selectedEffect.id, RESERVED_KEYS.scrub, 0);
         }}
         style={{
           padding: '4px 10px',

@@ -1,10 +1,10 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import type { JournalEntry } from '../shared/index.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { formatChanges, formatStatus, runAck } from './commands.js';
+import { formatChanges, formatStatus, runAck, runRevert } from './commands.js';
 import { appendEntry, readJournal, writeSelected } from './journal.js';
 
 let root: string;
@@ -34,4 +34,13 @@ describe('commands', () => {
     await writeSelected(root, { effectId: 'card#1', effectName: 'Card', elementSelector: '.card', values: { radius: 120 } });
     expect(await formatStatus(root, 1)).toBe('Daemon: stopped (127.0.0.1:1)\nSelection: Card (card#1)\nElement: .card\nValues: {"radius":120}');
   });
+
+  it('reverts an applied entry and removes it', async () => {
+    await writeFile(join(root, 'motion.css'), '.card{--mw-radius:120px}');
+    await appendEntry(root, { ...entry, status: 'applied', changes: [{ ...entry.changes[0]!, var: '--mw-radius', fromCss: '100px', toCss: '120px' }] });
+    expect(await runRevert(root, 'abc')).toEqual(['motion.css']);
+    expect(await readFile(join(root, 'motion.css'), 'utf8')).toContain('100px'); expect(await readJournal(root)).toEqual([]);
+  });
+
+  it('errors for an unknown revert id', async () => expect(runRevert(root, 'missing')).rejects.toThrow('Unknown change id'));
 });
