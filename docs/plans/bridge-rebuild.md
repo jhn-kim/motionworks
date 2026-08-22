@@ -68,7 +68,7 @@ Browser-side: baseline read with `getComputedStyle(el).getPropertyValue('--mw-<k
 | 2 | one agent | main | slice prompt, N=2 |
 | 2a | one agent | main | sweep prompt (Slice 2a section) |
 | 2b | one agent | main | slice prompt, N=2b |
-| 3 ∥ 4 | two agents (e.g. Claude on 3, Codex on 4) | worktrees: `git worktree add ../pinch-slice-3 -b slice-3` and `../pinch-slice-4 -b slice-4` | slice prompt, N=3 / N=4, run inside each worktree |
+| 3 ∥ 4 | two agents (e.g. Claude on 3, Codex on 4) | worktrees: `git worktree add ../<repo>-slice-3 -b slice-3` and `../<repo>-slice-4 -b slice-4` | slice prompt, N=3 / N=4, run inside each worktree |
 | merge | you | main | `git merge slice-3 && git merge slice-4`; if conflicts, use the conflict prompt below |
 | 5 | one agent | main | slice prompt, N=5 |
 | 6 | one agent | main | slice prompt, N=6; then confirm the doc proposals it reports and give the doc-write prompt |
@@ -100,7 +100,7 @@ Prompt (Claude Code or Codex, unchanged):
 
 > Read `docs/plans/bridge-rebuild.md`. Implement **Slice N only**. Do not start other slices. Reuse the existing functions the plan names; do not re-implement them. Match the surrounding code style and test style (Vitest; temp dirs via `mkdtemp`, see `packages/mcp/src/init.test.ts`). Before finishing run `npm run build`, `npm run typecheck`, `npm test` and make them green. Do not edit anything under `docs/` or `MOTIONWORKS.md`; list needed doc changes in your report instead. If the plan is wrong or ambiguous, stop and report rather than improvising.
 
-For parallel slices: `git worktree add ../pinch-slice-3 -b slice-3` (and `-4`), run the agent inside that directory, merge back after tests pass.
+For parallel slices: `git worktree add ../<repo>-slice-3 -b slice-3` (and `-4`), run the agent inside that directory, merge back after tests pass.
 
 ---
 

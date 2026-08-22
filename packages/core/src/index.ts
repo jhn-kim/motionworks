@@ -15,6 +15,14 @@ export type {
   TypeCorrection,
   UpstreamMessage,
 } from './types.js';
+export type {
+  CommitRequest,
+  JournalChange,
+  JournalEntry,
+  JournalStatus,
+  SelectRequest,
+  StatusResponse,
+} from './journal-types.js';
 
 export { validateRegistration } from './validate.js';
 export type { ValidationResult } from './validate.js';
