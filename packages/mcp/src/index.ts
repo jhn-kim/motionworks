@@ -17,11 +17,16 @@ export {
 } from './claude-md.js';
 export { checkDrift, formatDriftWarning, type FileDriftStatus } from './drift.js';
 export { runInit, diffStanzas, type InitOptions, type InitOutcome } from './init.js';
-export { createMotionWorksMcpServer, type McpServerBridge } from './mcp-server.js';
+export { startDaemon, type DaemonOptions, type RunningDaemon } from './daemon.js';
+export { loadConfig, parsePort, type AgentSetting, type MotionWorksConfig } from './config.js';
+export { formatChanges, formatStatus, runAck } from './commands.js';
 export {
-  createStateFileWriter,
-  type StateFileWriter,
-  type StateFileWriterOptions,
-} from './state-file.js';
-export { start, type StartOptions, type RunningMotionWorks } from './runner.js';
+  ackEntries,
+  appendEntry,
+  readJournal,
+  readSelected,
+  updateEntry,
+  withJournalLock,
+  writeSelected,
+} from './journal.js';
 export { PACKAGE_VERSION } from './version.js';

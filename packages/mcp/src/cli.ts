@@ -1,103 +1,76 @@
 #!/usr/bin/env node
-import { runSetup } from "./setup.js";
-import { start } from "./runner.js";
-import { PACKAGE_VERSION } from "./version.js";
-import { banner, dim } from "./ui.js";
+import { resolve } from 'node:path';
+
+import { runSetup } from './setup.js';
+import { checkDrift } from './drift.js';
+import { formatChanges, formatStatus, pendingChanges, runAck } from './commands.js';
+import { loadConfig, parsePort, type AgentSetting } from './config.js';
+import { startDaemon } from './daemon.js';
+import { PACKAGE_VERSION } from './version.js';
+import { banner, dim } from './ui.js';
 
 const HELP = `Usage:
-  npx motionworks              Start the MotionWorks WebSocket bridge (port 52340)
-                              and the MCP server over stdio.
-  npx motionworks init         Set up MotionWorks in the current project:
-                              add the MCP server entry to ./.mcp.json,
-                              install @motionworks/react (React projects),
-                              and append/update the MotionWorks instructions
-                              stanza in every agent instruction file that
-                              exists (./CLAUDE.md for Claude Code, ./AGENTS.md
-                              for Codex and other AGENTS.md agents; creates
-                              ./CLAUDE.md when neither exists). Each step is
-                              confirmed before it runs and skipped when
-                              already done.
-    --yes, -y                  Skip confirmation prompts (CI-friendly).
-    --stanza-only              Only write the instructions stanza.
-    --claude                   Target ./CLAUDE.md explicitly (create if missing).
-    --agents                   Target ./AGENTS.md explicitly (create if missing).
-  npx motionworks help         Show this help.
-  npx motionworks --version    Print the installed version.
-
-Env:
-  MOTIONWORKS_PORT   Override the WebSocket bridge port (default: 52340).
+  npx motionworks [--port N] [--agent=auto|claude|codex|off]  Start the daemon.
+  npx motionworks changes [--json|--brief]                    Show pending changes.
+  npx motionworks ack <id>|--all                              Acknowledge changes.
+  npx motionworks status                                      Show daemon and selection.
+  npx motionworks serve <dir>                                 Reserved for Slice 4.
+  npx motionworks init [--yes] [--stanza-only]                Set up MotionWorks.
+  npx motionworks help | --version
 `;
 
-function parsePort(): number | undefined {
-  const raw = process.env["MOTIONWORKS_PORT"];
-  if (raw === undefined || raw === "") return undefined;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0 || n > 65535) {
-    process.stderr.write(
-      `[motionworks] Ignoring invalid MOTIONWORKS_PORT="${raw}"; using default.\n`,
-    );
-    return undefined;
-  }
-  return n;
+function flagValue(args: string[], name: string): string | undefined {
+  const inline = args.find((arg) => arg.startsWith(`${name}=`));
+  if (inline !== undefined) return inline.slice(name.length + 1);
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] : undefined;
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const first = args[0];
-
-  if (first === "--version" || first === "-v") {
-    process.stdout.write(`${PACKAGE_VERSION}\n`);
+  const command = args[0]?.startsWith('-') ? undefined : args[0];
+  if (args.includes('--version') || args.includes('-v')) return void process.stdout.write(`${PACKAGE_VERSION}\n`);
+  if (command === 'help' || args.includes('--help') || args.includes('-h')) return void process.stdout.write(HELP);
+  if (command === 'init') {
+    process.stdout.write(`${banner(PACKAGE_VERSION)}\n  ${dim(`Setting up in ${process.cwd()}`)}\n\n`);
+    const result = await runSetup({ cwd: process.cwd(), packageVersion: PACKAGE_VERSION, yes: args.includes('--yes') || args.includes('-y'), stanzaOnly: args.includes('--stanza-only'), claude: args.includes('--claude'), agents: args.includes('--agents') });
+    if (result.initOutcomes.some((item) => item.kind === 'cancelled') || result.setupOutcomes.some((item) => item.kind === 'cancelled' || item.kind === 'react-install-failed')) process.exitCode = 1;
     return;
   }
-  if (first === "help" || first === "--help" || first === "-h") {
-    process.stdout.write(HELP);
+  const portFlag = flagValue(args, '--port');
+  if (portFlag !== undefined && parsePort(portFlag) === undefined) throw new Error(`Invalid port: ${portFlag}`);
+  const agentFlag = args.includes('--no-agent') ? 'off' : flagValue(args, '--agent') as AgentSetting | undefined;
+  const config = await loadConfig(process.cwd(), { port: parsePort(portFlag), agent: agentFlag });
+  if (command === 'changes') return void process.stdout.write(`${formatChanges(await pendingChanges(process.cwd()), args.includes('--json') ? 'json' : args.includes('--brief') ? 'brief' : 'agent')}\n`);
+  if (command === 'ack') {
+    const id = args.includes('--all') ? 'all' : args[1];
+    if (id === undefined) throw new Error('Usage: motionworks ack <id>|--all');
+    const acknowledged = await runAck(process.cwd(), id, config.port);
+    process.stdout.write(`Acknowledged ${acknowledged.length} change${acknowledged.length === 1 ? '' : 's'}.\n`);
     return;
   }
+  if (command === 'status') return void process.stdout.write(`${await formatStatus(process.cwd(), config.port)}\n`);
+  if (command !== undefined && command !== 'serve') { process.stderr.write(`[motionworks] Unknown command: "${command}"\n\n${HELP}`); process.exitCode = 2; return; }
 
-  if (first === "init") {
-    const yes = args.includes("--yes") || args.includes("-y");
-    process.stdout.write(`${banner(PACKAGE_VERSION)}\n`);
-    process.stdout.write(`  ${dim(`Setting up in ${process.cwd()}`)}\n\n`);
-    const { setupOutcomes, initOutcomes } = await runSetup({
-      cwd: process.cwd(),
-      packageVersion: PACKAGE_VERSION,
-      yes,
-      stanzaOnly: args.includes("--stanza-only"),
-      claude: args.includes("--claude"),
-      agents: args.includes("--agents"),
-    });
-    const failed =
-      initOutcomes.some((o) => o.kind === "cancelled") ||
-      setupOutcomes.some(
-        (o) => o.kind === "cancelled" || o.kind === "react-install-failed",
-      );
-    if (failed) process.exitCode = 1;
-    return;
-  }
-
-  if (first !== undefined) {
-    process.stderr.write(
-      `[motionworks] Unknown command: "${first}"\n\n${HELP}`,
-    );
-    process.exitCode = 2;
-    return;
-  }
-
-  // Default: start the server.
-  const runtime = await start({ cwd: process.cwd(), port: parsePort() });
-
-  const shutdown = async (): Promise<void> => {
-    try {
-      await runtime.stop();
-    } finally {
-      process.exit(0);
+  const warning = await checkDrift({ cwd: process.cwd(), packageVersion: PACKAGE_VERSION });
+  if (warning !== null) process.stderr.write(`${warning}\n`);
+  try {
+    const daemon = await startDaemon({ projectRoot: process.cwd(), port: config.port, agentSetting: config.agent, staticDir: command === 'serve' ? resolve(args[1] ?? '.') : undefined });
+    process.stderr.write(`MotionWorks daemon listening on 127.0.0.1:${daemon.port}\n`);
+    const shutdown = (): void => { void daemon.stop().then(() => process.exit(0)); };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+      try {
+        const response = await fetch(`http://127.0.0.1:${config.port}/status`);
+        if (response.ok) throw new Error(`already running on 127.0.0.1:${config.port}, use that one or set MOTIONWORKS_PORT`);
+      } catch (probeError) {
+        if (probeError instanceof Error && probeError.message.startsWith('already running')) throw probeError;
+      }
     }
-  };
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
+    throw error;
+  }
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`[motionworks] ${String(err)}\n`);
-  process.exit(1);
-});
+main().catch((error: unknown) => { process.stderr.write(`[motionworks] ${String(error)}\n`); process.exit(1); });
