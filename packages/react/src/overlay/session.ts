@@ -9,6 +9,7 @@ import {
 } from "@motionworks/core";
 
 import { getBridge, type Bridge } from "../bridge.js";
+import { deepEqual } from "../deep-equal.js";
 import { describeNode, findInteractiveNode } from "../dom-selector.js";
 import { DaemonClient } from "./daemon-client.js";
 import { loadPersistedDiffs, persistDiffs } from "./diff-persistence.js";
@@ -344,8 +345,8 @@ export class OverlaySession {
     for (const entry of this.entries.filter(
       (candidate) => candidate.effectId === effectId,
     )) {
-      const changesClean = entry.changes.every(
-        (change) => result.params[change.param]?.status === "clean",
+      const changesClean = entry.changes.every((change) =>
+        deepEqual(change.to, effect.params[change.param]?.value),
       );
       const correctionsClean = (entry.typeCorrections ?? []).every(
         (correction) =>

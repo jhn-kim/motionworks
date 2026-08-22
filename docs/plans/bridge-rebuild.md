@@ -163,6 +163,27 @@ Invariant: a React app using today's `useMotionWorks(ref, {params:{k:{type,value
 
 **Verify (manual, local demo):** `npx motionworks` + `npm run dev -w examples/demo`; drag, Apply → entry with `sourceHints` in `.motionworks/changes.json`; hand-off notice shows; edit `examples/demo/src/motion-config.ts` by hand → HMR → overlay reconciles clean → `/ack` → file empties. Reload mid-drag → tweak restored.
 
+### Slice 2 bug fix — reconciliation-driven `/ack` reload race
+
+Saving a constants-only module can trigger a full Vite page reload. On startup,
+the hydrated diff may reconcile against the new source baseline before the first
+`/pending` response arrives. That reconciliation consumes the clean diff while
+the session's journal-entry list is still empty, leaving the later-polled entry
+pending forever.
+
+Auto-ack is therefore entry-driven rather than dependent on the ephemeral
+`DiffStore.reconcile()` result: for each polled entry, compare every
+`changes[].to` directly with the effect's current registered baseline using deep
+equality, also require its `typeCorrections` to match, and acknowledge it only
+when all comparisons are clean. Re-evaluate this condition when `/pending`
+entries arrive. Keep diff reconciliation unchanged for clearing or re-applying
+live-preview intent.
+
+Regression coverage must deliver `/pending` after a hydrated diff has already
+reconciled during registration: a matching entry is acknowledged, while an
+entry for the same parameter whose `to` differs from the new baseline remains
+pending.
+
 ## Slice 2a — Hygiene sweep #1 (single agent, main tree)
 
 Prompt to give the agent, verbatim:

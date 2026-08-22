@@ -167,6 +167,70 @@ describe("OverlaySession", () => {
     );
   });
 
+  it("acks a matching entry delivered after startup reconciliation but leaves a mismatched entry pending", async () => {
+    session.stop();
+    getBridge().unregister(effectId);
+    storage.set(
+      `motionworks:diffs:${location.origin}`,
+      JSON.stringify({
+        diffs: { [effectId]: { radius: { from: 100, to: 160 } } },
+      }),
+    );
+    vi.useFakeTimers();
+    requests = [];
+    pending = [];
+
+    session = new OverlaySession({ daemonUrl: "http://127.0.0.1:59999" });
+    session.start();
+    getBridge().register(effectId, null, {
+      ...registration,
+      params: { radius: { ...registration.params.radius, value: 160 } },
+    });
+
+    // Registration consumes the hydrated clean diff before the daemon's
+    // first pending response has supplied any journal entries.
+    expect(session.diffs.getDiff(effectId)).toEqual({});
+    await vi.advanceTimersByTimeAsync(0);
+    pending = [
+      {
+        id: "matching-entry",
+        createdAt: Date.now(),
+        origin: location.origin,
+        page: location.href,
+        effectId,
+        effectName: "CardEntrance",
+        elementSelector: ".card",
+        status: "pending",
+        changes: [
+          { param: "radius", type: "spatial-radius", from: 100, to: 160 },
+        ],
+      },
+      {
+        id: "mismatched-entry",
+        createdAt: Date.now(),
+        origin: location.origin,
+        page: location.href,
+        effectId,
+        effectName: "CardEntrance",
+        elementSelector: ".card",
+        status: "pending",
+        changes: [
+          { param: "radius", type: "spatial-radius", from: 100, to: 175 },
+        ],
+      },
+    ];
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    await vi.advanceTimersByTimeAsync(0);
+    const acknowledged = requests
+      .filter((request) => request.url.endsWith("/ack"))
+      .map(
+        (request) => JSON.parse(String(request.init?.body)) as { id: string },
+      );
+    expect(acknowledged).toContainEqual({ id: "matching-entry" });
+    expect(acknowledged).not.toContainEqual({ id: "mismatched-entry" });
+  });
+
   it("persists and hydrates diffs across sessions", async () => {
     vi.useFakeTimers();
     session.manipulate(effectId, "radius", 175);
