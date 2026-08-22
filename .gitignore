@@ -40,8 +40,8 @@ yarn-error.log*
 # idea files
 .idea
 
-# motionworks runtime state (written by the bridge, never committed)
-motionworks-state.json
+# motionworks runtime state (written by the daemon, never committed)
+.motionworks/
 
 # local development harness, not published yet (better demo planned)
 examples/

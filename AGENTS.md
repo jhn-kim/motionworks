@@ -17,6 +17,14 @@ Then read whichever of the following apply to your task:
 
 ## Rules
 
+## Active rebuild (remove in Slice 6)
+
+The bridge is being rebuilt per `docs/plans/bridge-rebuild.md`. Where that plan conflicts
+with `docs/*.md`, `MOTIONWORKS.md`, or the MotionWorks stanza in `CLAUDE.md`, **the plan wins**.
+`docs/*.md` still govern anything the plan does not mention. Do not edit `docs/*.md` to
+match the plan; list needed doc changes in your report instead. When assigned a slice,
+implement that slice only.
+
 - Any task involving schema, data contracts, or agent-to-agent coordination requires reading SCHEMA.md and AGENT_INTEGRATION.md in full first. Do not infer the contract from code alone.
 - These docs are the source of truth. If you find a task in conflict with what's documented, treat the doc as authoritative unless the human operator tells you otherwise.
 - If a doc is wrong, outdated, or incomplete: do not edit it silently. Propose the specific change and wait for confirmation before writing.
