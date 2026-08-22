@@ -2,6 +2,21 @@ import { defineConfig } from "tsup";
 
 export default defineConfig([
   {
+    entry: { "motionworks.global": "src/browser/standalone.ts" },
+    format: ["iife"],
+    globalName: "MotionWorks",
+    platform: "browser",
+    target: "es2020",
+    noExternal: [/.*/],
+    define: { "process.env.NODE_ENV": '"development"' },
+    minify: true,
+    sourcemap: true,
+    dts: false,
+    clean: false,
+    outExtension: () => ({ js: ".js" }),
+    tsconfig: "tsconfig.build.json",
+  },
+  {
     entry: { index: "src/shared/index.ts" },
     format: ["esm"],
     platform: "neutral",

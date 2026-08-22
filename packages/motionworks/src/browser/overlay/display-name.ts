@@ -4,6 +4,11 @@
 
 // "ProductCardHover" → "Product card hover"; "live-pulse" → "Live pulse".
 export function humanizeEffectName(name: string): string {
+  const instance = /^(.*)#(\d+)$/.exec(name);
+  if (instance !== null) {
+    const base = humanizeEffectName(instance[1] ?? '');
+    return `${base} ${instance[2]}`;
+  }
   const spaced = name
     .replace(/[-_]+/g, ' ')
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')

@@ -11,6 +11,7 @@ import { banner, dim } from './ui.js';
 
 const HELP = `Usage:
   npx motionworks [--port N] [--agent=auto|claude|codex|off]  Start the daemon.
+  npx motionworks serve <dir> [--port N]                      Serve a static site and overlay.
   npx motionworks changes [--json|--brief]                    Show pending changes.
   npx motionworks ack <id>|--all                              Acknowledge changes.
   npx motionworks status                                      Show daemon and selection.

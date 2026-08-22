@@ -8,6 +8,8 @@ import { applyCors } from './cors.js';
 import { ackEntries, appendEntry, pruneAppliedEntries, readJournal, writeSelected } from './journal.js';
 import { updateEntry } from './journal.js';
 import { applyCssChanges } from './css-write.js';
+import { resolveOverlayBundle } from './overlay-asset.js';
+import { createStaticHandler } from './static-serve.js';
 
 const MAX_BODY = 1024 * 1024;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -60,6 +62,7 @@ function isSelect(value: unknown): value is SelectRequest {
 
 export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   await pruneAppliedEntries(options.projectRoot, Date.now() - RETENTION_MS);
+  const staticHandler = options.staticDir === undefined ? null : createStaticHandler(options.staticDir);
   const server = createServer(async (req, res) => {
     if (!applyCors(req, res)) return;
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -84,8 +87,17 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
         return;
       }
       if (req.method === 'GET' && url.pathname === '/motionworks.js') {
-        res.statusCode = 404;
-        res.end('Overlay bundle is unavailable until MotionWorks Slice 4 is built.');
+        const path = options.overlayBundlePath ?? await resolveOverlayBundle(options.projectRoot);
+        if (path === null) {
+          res.statusCode = 404;
+          res.end('Overlay bundle not found. Run npm run build in the motionworks package.');
+          return;
+        }
+        const { createReadStream } = await import('node:fs');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        createReadStream(path).pipe(res);
         return;
       }
       if (req.method === 'POST' && url.pathname === '/commit') {
@@ -119,6 +131,7 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
         sendJson(res, 200, { acknowledged: (await ackEntries(options.projectRoot, ids)).map((entry) => entry.id) });
         return;
       }
+      if (staticHandler !== null && await staticHandler(req, res)) return;
       res.statusCode = 404;
       res.end('Not found');
     } catch (error) {

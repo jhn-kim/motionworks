@@ -30,3 +30,5 @@ export {
   writeSelected,
 } from './journal.js';
 export { PACKAGE_VERSION } from './version.js';
+export { resolveOverlayBundle } from './overlay-asset.js';
+export { createStaticHandler } from './static-serve.js';

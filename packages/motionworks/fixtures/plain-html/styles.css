@@ -1,0 +1,12 @@
+body { margin: 0; font-family: system-ui, sans-serif; }
+.hero {
+  --mw-radius: 120px;
+  width: var(--mw-radius);
+  height: var(--mw-radius);
+  margin: 20vh auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #665cff;
+  color: white;
+}

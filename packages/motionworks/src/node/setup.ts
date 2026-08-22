@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Readable, Writable } from "node:stream";
 
@@ -13,19 +13,13 @@ import {
 import { cyan, dim, heading, step, symbols } from "./ui.js";
 
 export type SetupOutcome =
-  | { kind: "mcp-json-created"; path: string }
-  | { kind: "mcp-json-updated"; path: string }
-  | { kind: "mcp-json-already-configured"; path: string }
+  | { kind: "gitignore-updated" | "gitignore-already-configured"; path: string }
+  | { kind: "stale-mcp-entry-removed" | "stale-mcp-entry-absent"; path: string }
   | { kind: "react-installed"; packageManager: string }
   | { kind: "react-already-installed" }
   | { kind: "react-skipped"; reason: string }
   | { kind: "react-install-failed"; packageManager: string; exitCode: number }
-  | { kind: "cancelled"; step: "mcp-json" | "install"; reason: string };
-
-const MCP_SERVER_ENTRY = {
-  command: "npx",
-  args: ["-y", "motionworks"],
-} as const;
+  | { kind: "cancelled"; step: "gitignore" | "install"; reason: string };
 
 /** Command that installs a runtime dependency, per package manager. */
 export function detectInstallCommand(lockfiles: string[]): {
@@ -72,7 +66,7 @@ async function readJsonFile(
   return parsed as Record<string, unknown>;
 }
 
-export async function ensureMcpJson(options: {
+export async function ensureGitignore(options: {
   cwd: string;
   yes: boolean;
   input: Readable;
@@ -80,43 +74,36 @@ export async function ensureMcpJson(options: {
   log: (msg: string) => void;
 }): Promise<SetupOutcome> {
   const { cwd, yes, input, output, log } = options;
-  const path = join(cwd, ".mcp.json");
-  const existing = await readJsonFile(path);
-
-  const servers =
-    existing !== null &&
-    typeof existing["mcpServers"] === "object" &&
-    existing["mcpServers"] !== null
-      ? (existing["mcpServers"] as Record<string, unknown>)
-      : {};
-  if ("motionworks" in servers) {
-    log(step(symbols.skipped, `${dim(path)} already has the MCP server entry`));
-    return { kind: "mcp-json-already-configured", path };
+  const path = join(cwd, ".gitignore");
+  let existing = '';
+  try { existing = await readFile(path, 'utf8'); } catch { /* absent */ }
+  if (existing.split(/\r?\n/).includes('.motionworks/')) {
+    log(step(symbols.skipped, `${dim(path)} already ignores .motionworks/`));
+    return { kind: 'gitignore-already-configured', path };
   }
-
-  const creating = existing === null;
   if (!yes) {
-    const ok = await confirm(
-      creating
-        ? `Create ${path} with the MotionWorks MCP server entry?`
-        : `Add the MotionWorks MCP server entry to ${path}?`,
-      input,
-      output,
-    );
-    if (!ok)
-      return { kind: "cancelled", step: "mcp-json", reason: "user declined" };
+    const ok = await confirm(`Add .motionworks/ to ${path}?`, input, output);
+    if (!ok) return { kind: 'cancelled', step: 'gitignore', reason: 'user declined' };
   }
+  const separator = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+  await writeFile(path, `${existing}${separator}.motionworks/\n`, 'utf8');
+  log(step(symbols.done, `Updated ${dim(path)} — ignored .motionworks/`));
+  return { kind: 'gitignore-updated', path };
+}
 
-  const next = existing ?? {};
-  next["mcpServers"] = { ...servers, motionworks: MCP_SERVER_ENTRY };
-  await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  log(
-    step(
-      symbols.done,
-      `${creating ? "Created" : "Updated"} ${dim(path)} — MotionWorks MCP server`,
-    ),
-  );
-  return { kind: creating ? "mcp-json-created" : "mcp-json-updated", path };
+export async function removeStaleMcpEntry(cwd: string): Promise<SetupOutcome> {
+  const path = join(cwd, '.mcp.json');
+  const existing = await readJsonFile(path);
+  const servers = existing?.mcpServers;
+  if (existing === null || typeof servers !== 'object' || servers === null || !("motionworks" in servers)) {
+    return { kind: 'stale-mcp-entry-absent', path };
+  }
+  const nextServers = { ...(servers as Record<string, unknown>) };
+  delete nextServers.motionworks;
+  const next = { ...existing, mcpServers: nextServers };
+  if (Object.keys(nextServers).length === 0 && Object.keys(existing).length === 1) await unlink(path);
+  else await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  return { kind: 'stale-mcp-entry-removed', path };
 }
 
 export async function ensureReactInstalled(options: {
@@ -203,7 +190,7 @@ export interface SetupResult {
 }
 
 /**
- * Full project setup: .mcp.json entry, motionworks install, instruction
+ * Full project setup: journal ignore, stale MCP cleanup, motionworks install, instruction
  * stanza (via runInit), then next-step guidance. Each step is confirmation-
  * gated unless `yes`; each is independently skippable and idempotent, so
  * rerunning `init` after a partial setup completes only what is missing.
@@ -223,7 +210,8 @@ export async function runSetup(
 
   const setupOutcomes: SetupOutcome[] = [];
   if (!stanzaOnly) {
-    setupOutcomes.push(await ensureMcpJson({ cwd, yes, input, output, log }));
+    setupOutcomes.push(await ensureGitignore({ cwd, yes, input, output, log }));
+    setupOutcomes.push(await removeStaleMcpEntry(cwd));
     setupOutcomes.push(
       await ensureReactInstalled({
         cwd,
@@ -249,9 +237,10 @@ export async function runSetup(
       log(
         `  ${cyan("1.")} Mount the overlay once in your app — follow "Mounting the overlay" in ${cyan(GUIDE_FILE)} ${dim("(dev-only; renders nothing in production)")}.`,
       );
-      log(`  ${cyan("2.")} Restart your agent session so it picks up .mcp.json.`);
+      log(`  ${cyan("2.")} Start the daemon with ${cyan('npx motionworks')}.`);
     } else {
-      log(`  ${cyan("1.")} Restart your agent session so it picks up .mcp.json.`);
+      log(`  ${cyan("1.")} Add ${cyan('<script src="http://127.0.0.1:52340/motionworks.js"></script>')} before </body>.`);
+      log(`  ${cyan("2.")} Run ${cyan('npx motionworks serve .')}.`);
     }
   }
 

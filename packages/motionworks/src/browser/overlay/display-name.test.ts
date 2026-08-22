@@ -13,6 +13,10 @@ describe('humanizeEffectName', () => {
     expect(humanizeEffectName('live-pulse')).toBe('Live pulse');
     expect(humanizeEffectName('fade_in_up')).toBe('Fade in up');
   });
+
+  it('turns an instance suffix into an ordinal label', () => {
+    expect(humanizeEffectName('card-entrance#2')).toBe('Card entrance 2');
+  });
 });
 
 describe('isReadableName', () => {

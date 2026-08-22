@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import type { MotionWorksRegistration } from '../shared/index.js';
 
 import { getBridge } from './bridge.js';
-import { getCallerComponentName, makeEffectId } from './ids.js';
+import { allocateEffectId, slugify } from './ids.js';
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 
@@ -28,8 +28,7 @@ export function useMotionWorks<T extends Element>(
   ref: RefObject<T | null>,
   registration: MotionWorksRegistration,
 ): void {
-  const componentNameRef = useRef<string | null>(null);
-  if (IS_DEV && componentNameRef.current === null) componentNameRef.current = getCallerComponentName();
+  const idRef = useRef<string | null>(null);
   // Kept up to date on every render so the wrapped update fn below always
   // dispatches to the latest closure — even when we choose not to
   // re-register on every render (which would churn the WS).
@@ -44,9 +43,12 @@ export function useMotionWorks<T extends Element>(
   useEffect(() => {
     if (!IS_DEV) return;
     const current = registrationRef.current;
-    const id = makeEffectId(componentNameRef.current ?? 'Anonymous', current.name);
     const bridge = getBridge();
     const node = (ref.current as unknown as HTMLElement | null) ?? null;
+    if (node === null) return;
+    const slug = slugify(current.name);
+    const id = idRef.current ?? allocateEffectId(slug, node, bridge.getAllNodes());
+    idRef.current = id;
 
     bridge.register(id, node, current);
     return () => {
