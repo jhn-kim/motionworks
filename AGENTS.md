@@ -22,7 +22,7 @@ Then read whichever of the following apply to your task:
 - If a doc is wrong, outdated, or incomplete: do not edit it silently. Propose the specific change and wait for confirmation before writing.
 
 <!-- motionworks-instructions-start -->
-<!-- motionworks-version: 0.5.2 -->
+<!-- motionworks-version: 0.5.3 -->
 
 This project uses **MotionWorks** for motion design. Before you implement or refine motion, read [`MOTIONWORKS.md`](./MOTIONWORKS.md) — it defines the CSS-variable contract, overlay setup, and journal writeback rules. Before editing motion values, run `npx motionworks changes`; when the designer says "this one," run `npx motionworks status`.
 <!-- motionworks-instructions-end -->

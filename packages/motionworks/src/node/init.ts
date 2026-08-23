@@ -1,5 +1,13 @@
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import type { Readable, Writable } from "node:stream";
+
+import {
+  DEFAULT_PORT,
+  derivePort,
+  readConfigPort,
+  writeConfigPort,
+} from "./config.js";
 
 import {
   compareVersions,
@@ -60,6 +68,9 @@ export interface InitOptions {
   claude?: boolean;
   /** Force AGENTS.md into the target set (created if missing). */
   agents?: boolean;
+  /** Explicit daemon port override; otherwise derived per project on a fresh
+   * install and preserved from an existing config afterward. */
+  port?: number;
   input?: Readable;
   output?: Writable;
   log?: (msg: string) => void;
@@ -130,6 +141,7 @@ export async function runInit(options: InitOptions): Promise<InitOutcome[]> {
     yes = false,
     claude = false,
     agents = false,
+    port: portOverride,
     input = process.stdin,
     output = process.stdout,
     log = (msg: string) => process.stdout.write(`${msg}\n`),
@@ -166,8 +178,29 @@ export async function runInit(options: InitOptions): Promise<InitOutcome[]> {
       o.kind === "created" || o.kind === "appended" || o.kind === "replaced",
   );
   if (advanced) {
-    const desired = renderGuideDoc(packageVersion);
     const current = await readGuideFile(cwd);
+    const existingPort = await readConfigPort(cwd);
+    // Fresh installs (no guide yet) get a stable per-project port so several
+    // projects can run at once without colliding on 52340; an existing setup
+    // keeps its pinned or default port so an already-copied mount snippet
+    // never breaks.
+    const port =
+      portOverride ??
+      existingPort ??
+      (current === null ? derivePort(cwd) : DEFAULT_PORT);
+    if (
+      existingPort === undefined &&
+      (portOverride !== undefined || port !== DEFAULT_PORT)
+    ) {
+      await writeConfigPort(cwd, port);
+      log(
+        step(
+          symbols.done,
+          `Pinned daemon port ${String(port)} → ${dim(join(cwd, "motionworks.config.json"))}`,
+        ),
+      );
+    }
+    const desired = renderGuideDoc(packageVersion, port);
     if (current !== desired) {
       await writeGuideFile(cwd, desired);
       log(

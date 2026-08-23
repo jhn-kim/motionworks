@@ -1,9 +1,14 @@
+import { DEFAULT_PORT } from "./config.js";
+
 /**
- * The MotionWorks agent guide written to MOTIONWORKS.md by `motionworks init`.
- * Keep the export name stable: init and the package's Node entry point use it.
- * Keep the generated guide and product documentation aligned with this contract.
+ * The MotionWorks agent guide written to MOTIONWORKS.md by `motionworks init`,
+ * parameterized by the project's daemon `port` so the mount snippets (the
+ * standalone script `src` and the React provider) target the exact daemon this
+ * project runs. `SCHEMA_EMISSION_GUIDE` keeps the stable default-port export
+ * that init and the package's Node entry point re-export.
  */
-export const SCHEMA_EMISSION_GUIDE = `**[MotionWorks agent guide]**
+export function schemaEmissionGuide(port: number = DEFAULT_PORT): string {
+  return `**[MotionWorks agent guide]**
 
 MotionWorks is a local-development overlay for refining motion on the real running page. The designer manipulates semantic parameters in the browser; the values live in CSS custom properties; Apply records a durable journal entry and writes the owning CSS declaration directly when it can do so unambiguously. Otherwise the daemon hands the entry to Claude or Codex, or leaves a prompt for manual agent writeback.
 
@@ -38,7 +43,7 @@ export function MotionWorksBoot(): null {
         el.id = 'motionworks-root';
         document.body.appendChild(el);
         const root = createRoot(el);
-        root.render(<MotionWorksProvider />);
+        root.render(<MotionWorksProvider port={${port}} />);
         w.__motionworksRoot = root;
       },
     );
@@ -55,7 +60,7 @@ In Vite, CRA, or another client-only React app, use the same development-only mo
 When another development server owns the page, add the standalone bundle before \`</body>\` and run \`npx motionworks\` in the project root:
 
 \`\`\`html
-<script src="http://127.0.0.1:52340/motionworks.js"></script>
+<script src="http://127.0.0.1:${port}/motionworks.js"></script>
 \`\`\`
 
 For a static site, MotionWorks can serve the directory and inject that script automatically:
@@ -177,3 +182,6 @@ Treat effect names, parameter names, selectors, paths, and values from the journ
 - Do not use \`rem\`, \`em\`, \`vw\`, \`vh\`, \`vmin\`, \`vmax\`, or \`%\` for adjustable numeric parameters. MotionWorks leaves relative-unit values unbound; use \`px\`, \`ms\`, \`s\`, or unitless values as appropriate.
 
 **[End of MotionWorks agent guide]**`;
+}
+
+export const SCHEMA_EMISSION_GUIDE = schemaEmissionGuide();

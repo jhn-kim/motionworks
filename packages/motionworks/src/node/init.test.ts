@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { GUIDE_FILE, renderStanza, scanClaudeMd } from "./claude-md.js";
+import { derivePort, readConfigPort } from "./config.js";
 import { runInit } from "./init.js";
 
 let cwd: string;
@@ -249,5 +250,51 @@ describe("runInit", () => {
     const byFile = new Map(outcomes.map((o) => [o.file, o.kind]));
     expect(byFile.get("CLAUDE.md")).toBe("skipped-same-version");
     expect(byFile.get("AGENTS.md")).toBe("replaced");
+  });
+});
+
+describe("runInit — per-project port", () => {
+  it("pins a derived port on a fresh install and wires it into the guide", async () => {
+    await runInit({ cwd, packageVersion: "1.0.0", yes: true, log: () => {} });
+    const port = derivePort(cwd);
+    expect(await readConfigPort(cwd)).toBe(port);
+
+    const guide = await readFile(join(cwd, GUIDE_FILE), "utf8");
+    expect(guide).toContain(`http://127.0.0.1:${String(port)}/motionworks.js`);
+    expect(guide).toContain(`<MotionWorksProvider port={${String(port)}} />`);
+  });
+
+  it("is idempotent: a same-version rerun keeps the pinned port and guide", async () => {
+    await runInit({ cwd, packageVersion: "1.0.0", yes: true, log: () => {} });
+    const port = await readConfigPort(cwd);
+    const guide = await readFile(join(cwd, GUIDE_FILE), "utf8");
+
+    await runInit({ cwd, packageVersion: "1.0.0", yes: true, log: () => {} });
+    expect(await readConfigPort(cwd)).toBe(port);
+    expect(await readFile(join(cwd, GUIDE_FILE), "utf8")).toBe(guide);
+  });
+
+  it("respects an explicit port override", async () => {
+    await runInit({
+      cwd,
+      packageVersion: "1.0.0",
+      yes: true,
+      port: 52399,
+      log: () => {},
+    });
+    expect(await readConfigPort(cwd)).toBe(52399);
+    const guide = await readFile(join(cwd, GUIDE_FILE), "utf8");
+    expect(guide).toContain("http://127.0.0.1:52399/motionworks.js");
+  });
+
+  it("keeps a port already pinned in the config", async () => {
+    await writeFile(
+      join(cwd, "motionworks.config.json"),
+      JSON.stringify({ port: 52360 }),
+    );
+    await runInit({ cwd, packageVersion: "1.0.0", yes: true, log: () => {} });
+    expect(await readConfigPort(cwd)).toBe(52360);
+    const guide = await readFile(join(cwd, GUIDE_FILE), "utf8");
+    expect(guide).toContain("http://127.0.0.1:52360/motionworks.js");
   });
 });
