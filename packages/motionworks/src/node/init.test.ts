@@ -26,8 +26,16 @@ describe("runInit", () => {
       yes: true,
       log: () => {},
     });
-    expect(outcomes).toHaveLength(1);
+    // A fresh project with no instruction file gets both, so Claude
+    // (CLAUDE.md) and Codex (AGENTS.md) are covered without guessing.
+    expect(outcomes).toHaveLength(2);
     expect(outcomes[0]).toMatchObject({ kind: "created", file: "CLAUDE.md" });
+    expect(outcomes[1]).toMatchObject({ kind: "created", file: "AGENTS.md" });
+
+    // Both carry the identical stanza; assert it on the AGENTS.md copy too.
+    const agents = await readFile(join(cwd, "AGENTS.md"), "utf8");
+    expect(scanClaudeMd(agents).present).toBe(true);
+    expect(agents).toContain("npx motionworks changes");
 
     const contents = await readFile(join(cwd, "CLAUDE.md"), "utf8");
     const scan = scanClaudeMd(contents);

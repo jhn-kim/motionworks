@@ -131,8 +131,9 @@ function colorizeDiff(diff: string): string {
  *
  * Target selection: `--claude` / `--agents` flags pick targets explicitly
  * (creating them if missing). With no flags, every instruction file that
- * exists (CLAUDE.md, AGENTS.md) is updated; if neither exists, CLAUDE.md is
- * created.
+ * exists (CLAUDE.md, AGENTS.md) is updated; if neither exists, both are
+ * created so Claude (CLAUDE.md) and Codex (AGENTS.md) are covered without
+ * detecting which agent the user runs.
  */
 export async function runInit(options: InitOptions): Promise<InitOutcome[]> {
   const {
@@ -159,7 +160,11 @@ export async function runInit(options: InitOptions): Promise<InitOutcome[]> {
     for (const file of INSTRUCTION_FILES) {
       if ((await readInstructionFile(cwd, file)) !== null) existing.push(file);
     }
-    targets = existing.length > 0 ? existing : ["CLAUDE.md"];
+    // A project that already has an instruction file only gets that one
+    // updated — we never add a second file over a stated preference. A fresh
+    // project with neither gets both, so a Codex user (reads AGENTS.md) and a
+    // Claude user (reads CLAUDE.md) are each covered without guessing which.
+    targets = existing.length > 0 ? existing : ["CLAUDE.md", "AGENTS.md"];
   }
 
   const outcomes: InitOutcome[] = [];

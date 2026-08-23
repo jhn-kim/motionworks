@@ -14,11 +14,13 @@ MotionWorks is a local-development overlay for refining motion on the real runni
 
 ## Run MotionWorks
 
-Run the daemon from the project root while the app's development server is running:
+Whenever you scaffold or mount motion, start the daemon yourself in the background from the project root (with the app's dev server running). The overlay's selection, Apply, and playback are inert until it runs, so don't report the work done with it stopped:
 
 \`\`\`bash
 npx motionworks
 \`\`\`
+
+Confirm it is up with \`npx motionworks status\` before you finish — it prints \`Daemon: running\` when connected. If a daemon is already on that port, \`npx motionworks\` exits with \`already running\`; use that one rather than starting a second. Ask the designer to run it themselves only when you genuinely cannot: you have no way to run a background process, or it exits on launch.
 
 Run \`npx motionworks init\` once to install MotionWorks, add \`.motionworks/\` to \`.gitignore\`, remove any stale MotionWorks MCP entry, and generate this guide plus the short instruction-file stanza.
 
@@ -167,7 +169,7 @@ Apply first saves an entry in \`.motionworks/changes.json\`. The daemon then tri
 
 For a manual handoff, the coding agent must:
 
-1. Run \`npx motionworks changes\` and process entries oldest first. If the designer says "this one," run \`npx motionworks status\` to read the current effect, selector, and values.
+1. Run \`npx motionworks changes\` and process entries oldest first; each entry already carries the effect, selector, and values to change. \`npx motionworks status\` is a diagnostic — it reports whether the daemon is running and what is selected in the browser — not a step in the writeback loop.
 2. For every item in \`changes\`, edit exactly the listed CSS declaration from \`fromCss\` to \`toCss\`. Do not refactor, rename, or make related changes. Never change the registration schema as part of a value writeback.
 3. If an entry contains \`typeCorrections\`, change only the listed parameter's schema \`type\`; this is the sole writeback case that edits the schema.
 4. After every listed change succeeds, run \`npx motionworks ack <id>\`. Do not acknowledge a partial or failed writeback.
