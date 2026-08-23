@@ -207,6 +207,33 @@ export class OverlaySession {
     }
   }
 
+  /**
+   * Generic replay for effects that don't declare `capabilities.replay`:
+   * restart the CSS animations on the effect's node and its subtree so a
+   * one-shot entrance re-runs and a running loop starts over. Toggling
+   * `animation: none` with a forced reflow between is the standard keyframe
+   * re-trigger. Purely JS-driven motion (no CSS animation) has nothing to
+   * restart and is left untouched — those effects opt in via `replay`.
+   */
+  replayCssAnimation(effectId: string): void {
+    const node = this.bridge.getNode(effectId);
+    if (node === undefined) return;
+    const elements: HTMLElement[] = [
+      node,
+      ...node.querySelectorAll<HTMLElement>("*"),
+    ];
+    for (const el of elements) {
+      const name = getComputedStyle(el).animationName;
+      if (name === "" || name === "none") continue;
+      const previous = el.style.animation;
+      el.style.animation = "none";
+      // Force a reflow so the browser commits the removal; without this the
+      // two writes collapse and the animation never restarts.
+      void el.offsetWidth;
+      el.style.animation = previous;
+    }
+  }
+
   replayInteraction(effectId: string): void {
     const target = findInteractiveNode(this.bridge.getNode(effectId) ?? null);
     if (target === null) return;

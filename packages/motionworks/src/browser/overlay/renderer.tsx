@@ -397,6 +397,13 @@ export function DynamicToolbox({
   const pendingApply = usePendingCommit(effectId);
   const [appliedMarker, setAppliedMarker] = useState(false);
   const commitVersionRef = useRef<number | null>(null);
+  // Snapshot of the scoped diff at the moment Apply was pressed. "Already
+  // submitted" is latched on this content signature rather than the diff
+  // VERSION: during the commit round-trip the version can bump for reasons
+  // that are not a real edit (the direct CSS write re-reads the baseline),
+  // and a version-based check would briefly re-light the verbs — the flash.
+  // A content latch only releases when the diff genuinely changes again.
+  const committedDiffSignatureRef = useRef<string | null>(null);
   const appliedDiffRef = useRef<string | null>(null);
   const handledAppliedRef = useRef(false);
   useEffect(() => {
@@ -431,6 +438,7 @@ export function DynamicToolbox({
 
   useEffect(() => {
     commitVersionRef.current = null;
+    committedDiffSignatureRef.current = null;
     appliedDiffRef.current = null;
     handledAppliedRef.current = false;
     setAppliedMarker(false);
@@ -569,7 +577,15 @@ export function DynamicToolbox({
     // so the bar's width is frozen for the whole editing session and the
     // first edit lights them up in place instead of shifting the layout.
     const editing = openFamily !== null || openEditor !== null;
-    const committedDiff = commitVersionRef.current === diffVersion;
+    // Content signature of the current scoped diff; compared against the
+    // snapshot taken at Apply so version churn during the round-trip cannot
+    // flip "already submitted" and re-light the verbs.
+    const scopedDiffSignature = changedEffectIds
+      .map((id) => `${id}:${JSON.stringify(session.diffs.getDiff(id))}`)
+      .join("|");
+    const committedDiff =
+      committedDiffSignatureRef.current !== null &&
+      committedDiffSignatureRef.current === scopedDiffSignature;
     const verbAvailability = resolveVerbAvailability({
       hasSelection,
       hasDiff,
@@ -584,21 +600,31 @@ export function DynamicToolbox({
     const verbsVisible = verbAvailability.visible;
     const localVerbsLive = verbAvailability.localLive;
     const applyLive = verbAvailability.applyLive;
-    // Replay: a capability-declared replay wins (the effect re-runs itself
-    // via the reserved key). Otherwise, effects on clickable elements get a
-    // simulated press — selection swallows genuine clicks, so this is the
-    // only way to watch press/click animations while the overlay is open.
+    // Play is always available on a selection, resolved in priority order:
+    //   1. capabilities.replay — the effect re-runs itself via the reserved
+    //      key (cleanest; works for JS effects that opt in).
+    //   2. the effect's OWN node is clickable — simulate a press (pointer +
+    //      mouse down/up, never a real click) so a :active / pointerdown
+    //      press animation plays without firing onClick side effects like an
+    //      add-to-cart or navigation. Gated to the node itself so it never
+    //      presses a wrong ancestor (a card merely nested inside a link).
+    //   3. otherwise — restart the effect's CSS animation directly, the
+    //      generic fallback that replays any CSS keyframe motion.
     const replayCapable = selectedEffect?.capabilities?.replay === true;
-    const pressTarget =
-      !replayCapable && selectedEffect !== null
-        ? findInteractiveNode(getBridge().getNode(selectedEffect.id) ?? null)
+    const bridgeNode =
+      selectedEffect !== null
+        ? (getBridge().getNode(selectedEffect.id) ?? null)
         : null;
-    if (selectedEffect !== null && (replayCapable || pressTarget !== null)) {
+    const pressSelf =
+      !replayCapable &&
+      bridgeNode !== null &&
+      findInteractiveNode(bridgeNode) === bridgeNode;
+    if (selectedEffect !== null) {
       result.push({
         id: "replay",
-        label: replayCapable
-          ? "Play animation"
-          : "Play animation — simulates a press",
+        label: pressSelf
+          ? "Play animation — simulates a press"
+          : "Play animation",
         kind: "verb",
         icon: ICONS.replay,
         selected: false,
@@ -609,8 +635,10 @@ export function DynamicToolbox({
               RESERVED_KEYS.replay,
               Date.now(),
             );
-          } else {
+          } else if (pressSelf) {
             session.replayInteraction(selectedEffect.id);
+          } else {
+            session.replayCssAnimation(selectedEffect.id);
           }
         },
       });
@@ -676,6 +704,7 @@ export function DynamicToolbox({
             }
             if (committed) {
               commitVersionRef.current = session.diffs.getVersion();
+              committedDiffSignatureRef.current = scopedDiffSignature;
               appliedDiffRef.current = null;
               handledAppliedRef.current = false;
               setAppliedMarker(false);

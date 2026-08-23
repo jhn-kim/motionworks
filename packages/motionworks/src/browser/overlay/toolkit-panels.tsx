@@ -863,8 +863,13 @@ function EasingCurveRow({
           </g>
         ))}
       </svg>
-      {/* Preset curves as mini-graph tiles: pick a curve by seeing it. */}
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+      {/* Preset curves as mini-graph tiles: pick a curve by seeing it. The
+          row never wraps — tiles flex to share whatever width the panel has
+          (which shifts as timing verbs like play come and go), so they stay a
+          single row from the narrowest panel to the widest. */}
+      <div
+        style={{ display: "flex", gap: 4, flexWrap: "nowrap", width: "100%" }}
+      >
         {EASING_PRESETS.map((preset) => {
           const tp = tileMapper(preset.value);
           const t0 = tp(0, 0);
@@ -879,11 +884,13 @@ function EasingCurveRow({
               aria-pressed={active}
               onClick={() => commit(preset.value)}
               style={{
+                flex: "1 1 0",
+                minWidth: 0,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 gap: 1,
-                padding: "3px 4px 2px",
+                padding: "3px 2px 2px",
                 border: `1px solid ${active ? "rgba(255, 255, 255, 0.5)" : GLASS.hairline}`,
                 borderRadius: 6,
                 background: active ? GLASS.fillActive : GLASS.fill,
@@ -891,7 +898,13 @@ function EasingCurveRow({
                 transition: "background 120ms ease, border-color 120ms ease",
               }}
             >
-              <svg width={TILE_W} height={TILE_H}>
+              <svg
+                width="100%"
+                height={TILE_H}
+                viewBox={`0 0 ${String(TILE_W)} ${String(TILE_H)}`}
+                preserveAspectRatio="none"
+                style={{ display: "block", maxWidth: "100%" }}
+              >
                 {/* end-level line: overshoot visibly crosses it */}
                 <line
                   x1={2}
@@ -919,6 +932,10 @@ function EasingCurveRow({
                     ? "rgba(255, 255, 255, 0.95)"
                     : "rgba(255, 255, 255, 0.55)",
                   letterSpacing: 0.03,
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
                 {preset.name}
