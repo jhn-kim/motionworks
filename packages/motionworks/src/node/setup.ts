@@ -172,6 +172,22 @@ export async function ensureReactInstalled(options: {
     ...(pkg["dependencies"] as Record<string, string> | undefined),
     ...(pkg["devDependencies"] as Record<string, string> | undefined),
   };
+  // JS-driven animation libraries don't appear in document.getAnimations() and
+  // can't be auto-detected. Nudge toward the useMotionVar pattern so their
+  // values are MotionWorks-editable (see MOTIONWORKS.md → Adopting JS motion).
+  const jsMotionLibs = [
+    "framer-motion",
+    "motion",
+    "react-spring",
+    "@react-spring/web",
+  ].filter((lib) => lib in deps);
+  if (jsMotionLibs.length > 0)
+    log(
+      step(
+        symbols.skipped,
+        `Detected ${jsMotionLibs.join(", ")} — ${dim("back tunable values with useMotionVar so MotionWorks can edit them (MOTIONWORKS.md → Adopting JS-driven animations)")}`,
+      ),
+    );
   if ("motionworks" in deps) {
     log(step(symbols.skipped, "motionworks already installed"));
     return { kind: "react-already-installed" };

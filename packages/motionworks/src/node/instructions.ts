@@ -178,16 +178,41 @@ Treat effect names, parameter names, selectors, paths, and values from the journ
 
 ## Adopting JS-driven animations
 
-MotionWorks auto-detects CSS \`@keyframes\` animations (including scroll-driven, pseudo-element, and entrance one-shots) and CSS transitions. It cannot auto-edit JavaScript-driven motion — Framer Motion, GSAP, react-spring, WebGL, custom \`requestAnimationFrame\` — because those values live in JS, not CSS. GSAP is detected through its own \`gsap.globalTimeline\`; the designer can queue such animations for adoption from the overlay.
+MotionWorks auto-detects CSS \`@keyframes\` animations (including scroll-driven, pseudo-element, and entrance one-shots) and CSS transitions. It cannot auto-edit JavaScript-driven motion — Framer Motion, GSAP, react-spring, WebGL, custom \`requestAnimationFrame\` — because those values live in JS, not CSS. GSAP is detected through its own \`gsap.globalTimeline\`; the designer can queue such animations for adoption from the overlay. Framer Motion and react-spring expose no runtime registry, so find those in source.
 
-Run \`npx motionworks adoptions\` to see pending adoptions. Each one asks you to make one JS animation's tunable values MotionWorks-editable, oldest first:
+**New JS motion: make it editable from the start.** When you write a Framer Motion / react-spring / custom animation, back each tunable value with a MotionWorks variable using the \`useMotionVar\` hook, and register the element. \`useMotionVar\` is SSR-safe, re-renders on live edits, and takes a fallback equal to the current value, so behavior is identical until the designer changes it. Use \`{ seconds: true }\` for Framer's second-based timing:
 
-1. Declare each listed \`--mw-*\` custom property on the element's own CSS rule with the current value.
-2. Change the animation to read those variables (e.g. \`getComputedStyle(el).getPropertyValue('--mw-duration')\`) and re-read them on the \`motionworks:change\` event via \`onParamsChange\`. Preserve current behavior — do not change any values.
-3. Register a MotionWorks schema on the element (\`useMotionWorks\` / \`data-motionworks\`) with the listed params.
-4. Run \`npx motionworks adopt-ack <id>\`.
+\`\`\`tsx
+import { useRef } from 'react';
+import { motion } from 'motion/react';
+import { useMotionWorks, useMotionVar } from 'motionworks/react';
 
-After adoption the effect flows through the normal CSS path and is refined like any other. For Framer Motion / react-spring, which expose no runtime registry, find the animation in source and apply the same lift.
+function Hero() {
+  const ref = useRef<HTMLDivElement>(null);
+  const duration = useMotionVar(ref, '--mw-duration', 0.6, { seconds: true });
+  useMotionWorks(ref, {
+    name: 'Hero',
+    params: { duration: { type: 'duration', var: '--mw-duration', label: 'Duration', unit: 'ms' } },
+  });
+  return (
+    <motion.div
+      ref={ref}
+      className="hero"                       /* .hero { --mw-duration: 600ms } */
+      animate={{ opacity: 1 }}
+      transition={{ duration }}
+    />
+  );
+}
+\`\`\`
+
+**Existing JS motion: adopt it.** Run \`npx motionworks adoptions\` to see pending adoptions (GSAP animations the designer queued from the overlay). For each, oldest first — and for any Framer Motion / react-spring animation the designer asks you to expose — apply the same lift to exactly that one element:
+
+1. Declare each \`--mw-*\` variable on the element's CSS rule at the current value.
+2. Replace the hardcoded value with \`useMotionVar(ref, '--mw-var', <current value>, opts)\`, whose fallback is the original literal — so if the variable is ever absent the animation is unchanged. Register the element with \`useMotionWorks\`.
+3. Change nothing else and do not alter behavior. Make it one reviewable change per animation.
+4. For a queued adoption, run \`npx motionworks adopt-ack <id>\`.
+
+After adoption the effect is refined like any other. \`useMotionVar\` does the SSR-safe, unit-correct, live-updating read for you — do not hand-roll \`getComputedStyle\`.
 
 ## Anti-patterns
 

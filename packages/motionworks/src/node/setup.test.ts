@@ -137,6 +137,23 @@ describe("ensureReactInstalled", () => {
       await ensureReactInstalled({ ...base(), run: () => Promise.resolve(1) }),
     ).toMatchObject({ kind: "react-install-failed", exitCode: 1 });
   });
+
+  it("nudges toward useMotionVar when a JS animation library is present", async () => {
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        dependencies: { react: "^19", "framer-motion": "^11" },
+      }),
+    );
+    const logs: string[] = [];
+    await ensureReactInstalled({
+      ...base(),
+      log: (line) => logs.push(line),
+      run: () => Promise.resolve(0),
+    });
+    expect(logs.join("\n")).toContain("framer-motion");
+    expect(logs.join("\n")).toContain("useMotionVar");
+  });
 });
 
 describe("runSetup", () => {
