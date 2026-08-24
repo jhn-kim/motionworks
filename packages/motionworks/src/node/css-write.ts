@@ -164,13 +164,12 @@ function selectorAt(masked: string, position: number): string {
   return "";
 }
 
-export function findDeclarations(
+function rawDeclarations(
   source: string,
-  varName: string,
+  masked: string,
+  propName: string,
 ): DeclarationMatch[] {
-  if (varName === "animation") return [];
-  const masked = maskCommentsAndStrings(source);
-  const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = propName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`(^|[;{])\\s*${escaped}\\s*:\\s*`, "gm");
   const matches: DeclarationMatch[] = [];
   while (pattern.exec(masked) !== null) {
@@ -194,6 +193,108 @@ export function findDeclarations(
       selectorText: selectorAt(masked, start),
     });
   }
+  return matches;
+}
+
+// Which shorthand carries each editable timing longhand, and which token role to
+// find inside it: `animation`/`transition` put duration as the first <time>,
+// delay as the second, and the easing as the timing-function token.
+const SHORTHAND_TIMING: Record<
+  string,
+  { shorthand: string; role: "duration" | "delay" | "easing" }
+> = {
+  "animation-duration": { shorthand: "animation", role: "duration" },
+  "animation-delay": { shorthand: "animation", role: "delay" },
+  "animation-timing-function": { shorthand: "animation", role: "easing" },
+  "transition-duration": { shorthand: "transition", role: "duration" },
+  "transition-delay": { shorthand: "transition", role: "delay" },
+  "transition-timing-function": { shorthand: "transition", role: "easing" },
+};
+const TIME_TOKEN = /^-?(?:\d+\.?\d*|\.\d+)m?s$/i;
+const EASING_KEYWORD = new Set([
+  "linear",
+  "ease",
+  "ease-in",
+  "ease-out",
+  "ease-in-out",
+  "step-start",
+  "step-end",
+]);
+
+// Split a shorthand value into whitespace-separated top-level tokens (keeping
+// their absolute source offsets), respecting parens so cubic-bezier(...)/steps()
+// stay whole. A top-level comma means a multi-value shorthand (several
+// animations/properties) whose sub-values can't be disambiguated safely, so that
+// is reported as no match and left to agent handoff.
+function topLevelTokens(
+  value: string,
+  base: number,
+): { text: string; start: number; end: number }[] | null {
+  const tokens: { text: string; start: number; end: number }[] = [];
+  let depth = 0;
+  let tokenStart = -1;
+  for (let i = 0; i <= value.length; i++) {
+    const ch = i < value.length ? value[i] : undefined;
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (ch === "," && depth === 0) return null;
+    const isBoundary = ch === undefined || (depth === 0 && /\s/.test(ch));
+    if (isBoundary) {
+      if (tokenStart !== -1) {
+        tokens.push({
+          text: value.slice(tokenStart, i),
+          start: base + tokenStart,
+          end: base + i,
+        });
+        tokenStart = -1;
+      }
+    } else if (tokenStart === -1) tokenStart = i;
+  }
+  return tokens;
+}
+
+function shorthandTokenMatch(
+  decl: DeclarationMatch,
+  role: "duration" | "delay" | "easing",
+): DeclarationMatch | null {
+  const tokens = topLevelTokens(decl.value, decl.start);
+  if (tokens === null) return null;
+  let target: { text: string; start: number; end: number } | undefined;
+  if (role === "easing") {
+    target = tokens.find(
+      (t) =>
+        EASING_KEYWORD.has(t.text.toLowerCase()) ||
+        /^(?:cubic-bezier|steps|linear)\(/i.test(t.text),
+    );
+  } else {
+    const times = tokens.filter((t) => TIME_TOKEN.test(t.text));
+    target = role === "duration" ? times[0] : times[1];
+  }
+  if (target === undefined) return null;
+  return {
+    start: target.start,
+    end: target.end,
+    value: target.text,
+    selectorText: decl.selectorText,
+  };
+}
+
+export function findDeclarations(
+  source: string,
+  varName: string,
+): DeclarationMatch[] {
+  if (varName === "animation") return [];
+  const masked = maskCommentsAndStrings(source);
+  const matches = rawDeclarations(source, masked, varName);
+  // A timing longhand may live inside the `animation`/`transition` shorthand
+  // (the common way developers write it). Also target the matching sub-token so
+  // MotionWorks can auto-apply without a longhand refactor.
+  const shorthand = SHORTHAND_TIMING[varName];
+  if (shorthand !== undefined)
+    for (const decl of rawDeclarations(source, masked, shorthand.shorthand)) {
+      const token = shorthandTokenMatch(decl, shorthand.role);
+      if (token !== null) matches.push(token);
+    }
   return matches;
 }
 

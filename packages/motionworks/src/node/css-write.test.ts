@@ -66,6 +66,71 @@ describe("CSS write", () => {
     ).toMatchObject({ kind: "skipped" });
     expect(findDeclarations(".a{animation: spin 1s}", "animation")).toEqual([]);
   });
+
+  it("targets the duration token inside the animation shorthand", () => {
+    const src = ".badge { animation: wobble 1.2s ease-in-out infinite; }";
+    const decls = findDeclarations(src, "animation-duration");
+    expect(decls).toHaveLength(1);
+    expect(src.slice(decls[0]!.start, decls[0]!.end)).toBe("1.2s");
+    // delay = the second <time>, which this shorthand doesn't have.
+    expect(findDeclarations(src, "animation-delay")).toHaveLength(0);
+  });
+
+  it("auto-applies a duration edit written in the animation shorthand", async () => {
+    const file = join(root, "a.css");
+    await writeFile(
+      file,
+      ".badge { animation: wobble 1.2s ease-in-out infinite; }",
+    );
+    const change = entry({
+      param: "duration",
+      type: "duration",
+      var: "animation-duration",
+      from: 1200,
+      to: 1306.8,
+      fromCss: "1.2s",
+      toCss: "1.3068s",
+    });
+    expect((await applyCssChanges(root, change)).kind).toBe("applied");
+    expect(await readFile(file, "utf8")).toBe(
+      ".badge { animation: wobble 1.3068s ease-in-out infinite; }",
+    );
+  });
+
+  it("auto-applies a duration edit written in the transition shorthand", async () => {
+    const file = join(root, "t.css");
+    await writeFile(file, ".btn { transition: background-color 0.3s ease; }");
+    const change = entry({
+      param: "duration",
+      type: "duration",
+      var: "transition-duration",
+      from: 300,
+      to: 250,
+      fromCss: "0.3s",
+      toCss: "0.25s",
+    });
+    expect((await applyCssChanges(root, change)).kind).toBe("applied");
+    expect(await readFile(file, "utf8")).toBe(
+      ".btn { transition: background-color 0.25s ease; }",
+    );
+  });
+
+  it("leaves a multi-animation shorthand to agent handoff (comma list)", async () => {
+    await writeFile(
+      join(root, "a.css"),
+      ".x { animation: spin 1.2s linear, fade 2s ease; }",
+    );
+    const change = entry({
+      param: "duration",
+      type: "duration",
+      var: "animation-duration",
+      from: 1200,
+      to: 1300,
+      fromCss: "1.2s",
+      toCss: "1.3s",
+    });
+    expect((await applyCssChanges(root, change)).kind).toBe("skipped");
+  });
   it("narrows by source file and selector through nested media", async () => {
     await writeFile(join(root, "a.css"), ".a{--mw-radius:100px}");
     await writeFile(
