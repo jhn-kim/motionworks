@@ -19,6 +19,23 @@ function stubGsap(tweens: unknown[]): void {
 }
 
 describe("detectGsapCandidates", () => {
+  it("requests NESTED tweens and excludes timeline wrappers", () => {
+    let args: unknown[] = [];
+    (window as unknown as Record<string, unknown>)["gsap"] = {
+      globalTimeline: {
+        getChildren: (...received: unknown[]) => {
+          args = received;
+          return [];
+        },
+      },
+    };
+    detectGsapCandidates();
+    // getChildren(nested, tweens, timelines, ...): nested tweens, no timelines.
+    expect(args[0]).toBe(true); // nested — reach tweens inside gsap.timeline()
+    expect(args[1]).toBe(true); // tweens
+    expect(args[2]).toBe(false); // exclude timeline wrappers
+  });
+
   it("returns [] when GSAP is absent", () => {
     expect(detectGsapCandidates()).toEqual([]);
   });

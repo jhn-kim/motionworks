@@ -62,9 +62,11 @@ export function detectGsapCandidates(): JsAnimationCandidate[] {
   if (timeline === undefined || typeof getChildren !== "function") return [];
   let tweens: GsapTween[];
   try {
-    // (timelines, tweens, ignoreBeforeTime) — include tweens, not nested
-    // timelines, so each concrete tween is reported once.
-    tweens = getChildren.call(timeline, false, true, true);
+    // getChildren(nested, tweens, timelines, ignoreBeforeTime): include NESTED
+    // tweens (those created inside gsap.timeline() are not direct children of
+    // the global timeline) and exclude timeline wrappers (whose targets() /
+    // duration() describe the whole timeline, not a single animation).
+    tweens = getChildren.call(timeline, true, true, false);
   } catch {
     return [];
   }
