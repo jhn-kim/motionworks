@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -370,6 +371,73 @@ describe("daemon", () => {
     ).toMatchObject({ status: "pending" });
   });
 
+  it("survives an agent whose run rejects without crashing (P1-6)", async () => {
+    await daemon!.stop();
+    daemon = null;
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const agent: AgentRunner = {
+        command: "claude",
+        running: false,
+        // Reject rather than resolve — the completion chain must absorb it.
+        run: vi.fn(() => Promise.reject(new Error("boom"))),
+      };
+      daemon = await startDaemon({ projectRoot: root, port: 0, agent });
+      const created = await request("/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(commit()),
+      });
+      expect(await created.json()).toMatchObject({ status: "agent-working" });
+      await vi.waitFor(async () =>
+        expect((await readJournal(root))[0]).toMatchObject({
+          status: "pending",
+          error: expect.stringContaining("boom"),
+        }),
+      );
+      // Give any stray rejection a tick to surface.
+      await new Promise((r) => setTimeout(r, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("rejects a toCss that smuggles CSS structure or is undecodable (S3)", async () => {
+    for (const toCss of [
+      "1; } body { background: url(https://evil/) } .x { --mw-y:1",
+      "120px; color: red",
+      "not-a-length",
+    ]) {
+      const res = await request("/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...commit(),
+          changes: [{ ...commit().changes[0], toCss }],
+        }),
+      });
+      expect(res.status, `toCss ${JSON.stringify(toCss)}`).toBe(400);
+    }
+    expect(await readJournal(root)).toEqual([]);
+  });
+
+  it("rejects a non-string change.var with 400, not 500 (P2-12a)", async () => {
+    const res = await request("/commit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...commit(),
+        changes: [{ ...commit().changes[0], var: 123 }],
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("requires a configured token on POST requests", async () => {
     await daemon!.stop();
     daemon = await startDaemon({
@@ -404,5 +472,60 @@ describe("daemon", () => {
         })
       ).status,
     ).toBe(200);
+  });
+
+  it("requires the token on GET data routes and accepts it as a header (S1/S6)", async () => {
+    await daemon!.stop();
+    await writeFile(join(root, "bundle.js"), "// overlay\n");
+    daemon = await startDaemon({
+      projectRoot: root,
+      port: 0,
+      agentSetting: "off",
+      token: "secret",
+      overlayBundlePath: join(root, "bundle.js"),
+    });
+    // Consume every body so undici doesn't hold connections open.
+    const statusOf = async (
+      path: string,
+      init?: RequestInit,
+    ): Promise<number> => {
+      const res = await request(path, init);
+      await res.text();
+      return res.status;
+    };
+    const authed = { headers: { "X-MotionWorks-Token": "secret" } };
+    // The information-disclosure routes are no longer readable without the
+    // token, including the `?all=1` bypass the review flagged.
+    expect(await statusOf("/status")).toBe(401);
+    expect(await statusOf("/pending?all=1")).toBe(401);
+    expect(await statusOf("/status", authed)).toBe(200);
+    expect(await statusOf("/pending?all=1", authed)).toBe(200);
+    // The overlay asset stays reachable without a token so a page can bootstrap.
+    expect(await statusOf("/motionworks.js")).not.toBe(401);
+  });
+
+  it("rejects a non-loopback Host header to block DNS rebinding (S4)", async () => {
+    // `fetch`/undici forbids overriding the Host header, so drive a raw
+    // request that carries the attacker's rebound hostname.
+    const statusWithHost = (host: string): Promise<number> =>
+      new Promise((resolve, reject) => {
+        const req = httpRequest(
+          {
+            host: "127.0.0.1",
+            port: daemon!.port,
+            path: "/status",
+            method: "GET",
+            headers: { Host: host },
+          },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          },
+        );
+        req.on("error", reject);
+        req.end();
+      });
+    expect(await statusWithHost("attacker.example")).toBe(403);
+    expect(await statusWithHost("localhost:1234")).toBe(200);
   });
 });

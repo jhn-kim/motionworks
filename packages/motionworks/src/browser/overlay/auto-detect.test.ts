@@ -84,6 +84,46 @@ describe("CSS animation auto-detection", () => {
     stop();
   });
 
+  it("keeps a finished one-shot registered while its element stays in the DOM (P2-9)", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("CSSAnimation", FakeCssAnimation);
+    vi.stubGlobal("KeyframeEffect", FakeKeyframeEffect);
+    const state = new MotionWorksStateManager();
+    getBridge().attach(state);
+    const node = document.createElement("div");
+    node.style.animationName = "enter";
+    node.style.animationDuration = "300ms";
+    document.body.appendChild(node);
+    const animation = Object.assign(
+      new FakeCssAnimation(
+        "enter",
+        new FakeKeyframeEffect(node, { duration: 300, easing: "linear" }),
+      ),
+      { playState: "running" as AnimationPlayState },
+    );
+    let animations = [animation] as unknown as Animation[];
+    Object.defineProperty(document, "getAnimations", {
+      configurable: true,
+      value: () => animations,
+    });
+
+    const stop = startAutoDetect(10);
+    expect(state.getAllEffects().map((e) => e.id)).toEqual(["enter#1"]);
+
+    // The one-shot finishes: it drops out of getAnimations() but the element
+    // is still on the page. It must stay selectable, not flicker away.
+    animation.playState = "finished";
+    animations = [] as unknown as Animation[];
+    await vi.advanceTimersByTimeAsync(10);
+    expect(state.getAllEffects().map((e) => e.id)).toEqual(["enter#1"]);
+
+    // Once the element leaves the DOM, it is finally unregistered.
+    node.remove();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(state.getAllEffects()).toEqual([]);
+    stop();
+  });
+
   it("does not duplicate an animation inside an explicitly registered effect", () => {
     vi.useFakeTimers();
     vi.stubGlobal("CSSAnimation", FakeCssAnimation);

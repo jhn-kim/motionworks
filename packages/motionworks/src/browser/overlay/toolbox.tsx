@@ -189,6 +189,10 @@ export function Toolbox({
     offY: 0,
   });
   const suppressClickRef = useRef(false);
+  // Removes an in-flight bar-drag's window listeners if the toolbox unmounts
+  // mid-drag before pointerup fires (P2-10).
+  const dragCleanupRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => dragCleanupRef.current(), []);
 
   const beginBarDrag = (e: React.PointerEvent): void => {
     if (closing) return;
@@ -218,6 +222,7 @@ export function Toolbox({
     const up = (ev: PointerEvent): void => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      dragCleanupRef.current = () => undefined;
       const d = dragRef.current;
       d.tracking = false;
       if (!d.moved) return;
@@ -235,6 +240,10 @@ export function Toolbox({
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    dragCleanupRef.current = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
   };
 
   useEffect(() => {
@@ -632,6 +641,15 @@ function ToolButton({
   // animation retriggers on every press.
   const [clickCount, setClickCount] = useState(0);
   const pendingClickRef = useRef(false);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cancel a deferred transient action if the button unmounts before it fires,
+  // so `onClick` can't run against a torn-down toolkit (P2-11).
+  useEffect(
+    () => () => {
+      if (clickTimerRef.current !== null) clearTimeout(clickTimerRef.current);
+    },
+    [],
+  );
   const clickAnimation = ICON_CLICK_ANIMATION[tool.id];
   const disabled = tool.disabled === true;
   // A result can remain semantically selected while its action becomes
@@ -667,7 +685,8 @@ function ToolButton({
               if (clickAnimation !== undefined) setClickCount((c) => c + 1);
               if (TRANSIENT_ACTION_IDS.has(tool.id)) {
                 pendingClickRef.current = true;
-                window.setTimeout(() => {
+                clickTimerRef.current = setTimeout(() => {
+                  clickTimerRef.current = null;
                   pendingClickRef.current = false;
                   onClick();
                 }, TRANSIENT_ACTION_DELAY_MS);
@@ -922,7 +941,7 @@ export const ICONS = {
   familyStyle: (
     <svg {...iconProps} aria-hidden>
       <defs>
-        <linearGradient id="ms-family-grad" x1="0" x2="1" y1="0" y2="0">
+        <linearGradient id="motionworks-family-grad-mw7" x1="0" x2="1" y1="0" y2="0">
           <stop offset="0" stopColor="currentColor" stopOpacity="0.15" />
           <stop offset="0.5" stopColor="currentColor" stopOpacity="0.55" />
           <stop offset="1" stopColor="currentColor" />
@@ -934,7 +953,7 @@ export const ICONS = {
         width="14"
         height="6"
         rx="1.5"
-        fill="url(#ms-family-grad)"
+        fill="url(#motionworks-family-grad-mw7)"
         stroke="none"
       />
       <circle cx="3.5" cy="10" r="1.1" fill="currentColor" stroke="none" />

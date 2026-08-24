@@ -72,8 +72,19 @@ export function SelectionEngine({
     }
     const bridge = getBridge();
 
-    // Registration map is rebuilt per hit-test — the bridge's node set can
-    // change any time (HMR, mount/unmount) so caching outside would go stale.
+    // Node → id lookup, rebuilt only when the bridge's node set actually
+    // changes (HMR, mount/unmount) rather than on every pointermove hit-test —
+    // rebuilding a full Map per move was pure churn while hovering (P1-5).
+    let registeredIdByNode = new Map<HTMLElement, string>();
+    const rebuildNodeMap = (): void => {
+      const map = new Map<HTMLElement, string>();
+      for (const [id, instances] of bridge.getAllNodes().entries())
+        for (const node of instances) map.set(node, id);
+      registeredIdByNode = map;
+    };
+    rebuildNodeMap();
+    const unsubscribeNodes = bridge.subscribeToNodes(rebuildNodeMap);
+
     // Returns registered nodes at the point ordered SHALLOWEST → DEEPEST,
     // so index 0 is the outermost ancestor and index N-1 is the innermost.
     // `elementsFromPoint` gives us deepest-first, so we reverse.
@@ -81,10 +92,6 @@ export function SelectionEngine({
       x: number,
       y: number,
     ): { id: string; node: HTMLElement }[] => {
-      const registeredIdByNode = new Map<HTMLElement, string>();
-      for (const [id, instances] of bridge.getAllNodes().entries()) {
-        for (const node of instances) registeredIdByNode.set(node, id);
-      }
       const stack = document.elementsFromPoint(x, y);
       const hits: { id: string; node: HTMLElement }[] = [];
       for (const element of stack) {
@@ -125,14 +132,18 @@ export function SelectionEngine({
         return;
 
       const stack = registeredStackAt(event.clientX, event.clientY);
-      event.preventDefault();
-      event.stopPropagation();
 
       if (stack.length === 0) {
+        // Clicked empty space / a non-registered element: clear the selection
+        // but let the event reach the app, so host inputs stay focusable, text
+        // stays selectable, scrollbars stay draggable, and links still work
+        // (P1-2). Only a hit on a registered element is swallowed.
         session.selectEffect(null);
         lastClickRef.current = { time: 0, x: 0, y: 0 };
         return;
       }
+      event.preventDefault();
+      event.stopPropagation();
 
       const last = lastClickRef.current;
       const now = Date.now();
@@ -157,9 +168,9 @@ export function SelectionEngine({
       if (event.target instanceof Element && isOverlayNode(event.target))
         return;
       const stack = registeredStackAt(event.clientX, event.clientY);
+      if (stack.length === 0) return; // let the app handle its own double-clicks
       event.preventDefault();
       event.stopPropagation();
-      if (stack.length === 0) return;
       const target = stack[stack.length - 1]!;
       session.selectEffect(target.id, target.node);
     };
@@ -173,6 +184,10 @@ export function SelectionEngine({
       if (!event.isTrusted) return;
       if (event.target instanceof Element && isOverlayNode(event.target))
         return;
+      // Only suppress the click when it landed on a registered element (whose
+      // pointerdown we consumed to select it). Clicks elsewhere pass through so
+      // the host UI keeps working while the toolkit is open (P1-2).
+      if (registeredStackAt(event.clientX, event.clientY).length === 0) return;
       event.preventDefault();
       event.stopPropagation();
     };
@@ -186,6 +201,7 @@ export function SelectionEngine({
       document.removeEventListener("pointerdown", onDown, { capture: true });
       document.removeEventListener("click", onClick, { capture: true });
       document.removeEventListener("dblclick", onDblClick, { capture: true });
+      unsubscribeNodes();
       setHover(null);
     };
   }, [active, session]);

@@ -331,6 +331,10 @@ export function PathSurface({
   const liveRef = useRef(liveValue);
   liveRef.current = liveValue;
   const draggingAnchorRef = useRef(false);
+  // Removes an in-flight anchor/handle drag's window listeners if the surface
+  // unmounts before pointerup (P2-10).
+  const dragCleanupRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => dragCleanupRef.current(), []);
 
   const path = liveValue;
   const [contrastColor, setContrastColor] = useState<"#000000" | "#ffffff">(
@@ -429,6 +433,7 @@ export function PathSurface({
         draggingAnchorRef.current = false;
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
+        dragCleanupRef.current = () => undefined;
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
@@ -437,6 +442,10 @@ export function PathSurface({
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
+      dragCleanupRef.current = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
     },
     [commit],
   );
@@ -465,6 +474,7 @@ export function PathSurface({
         const up = (): void => {
           window.removeEventListener("pointermove", move);
           window.removeEventListener("pointerup", up);
+          dragCleanupRef.current = () => undefined;
           try {
             target.releasePointerCapture(event.pointerId);
           } catch {
@@ -473,6 +483,10 @@ export function PathSurface({
         };
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", up);
+        dragCleanupRef.current = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+        };
       },
     [commit],
   );

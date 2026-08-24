@@ -107,13 +107,15 @@ describe("DaemonClient", () => {
     client.stop();
   });
 
-  it("preserves a daemon token on POST requests", async () => {
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const url = new URL(String(input));
-      if (url.pathname === "/status") return response(status);
-      if (url.pathname === "/pending") return response([]);
-      return response({ id: "change-1" });
-    });
+  it("sends a daemon token as a header, not in the URL (S6)", async () => {
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, _init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.pathname === "/status") return response(status);
+        if (url.pathname === "/pending") return response([]);
+        return response({ id: "change-1" });
+      },
+    );
     vi.stubGlobal("fetch", fetchMock);
     const client = new DaemonClient("http://127.0.0.1:52340?token=secret");
     client.start();
@@ -125,14 +127,20 @@ describe("DaemonClient", () => {
       elementSelector: ".x",
       changes: [],
     });
+    const tokenOf = (init: RequestInit | undefined): string | undefined => {
+      const headers = new Headers(init?.headers);
+      return headers.get("X-MotionWorks-Token") ?? undefined;
+    };
+    // Every request carries the token as a header (GET and POST)…
     expect(
-      fetchMock.mock.calls
-        .filter(([input]) => new URL(String(input)).pathname === "/commit")
-        .every(
-          ([input]) =>
-            new URL(String(input)).searchParams.get("token") === "secret",
-        ),
+      fetchMock.mock.calls.every(([, init]) => tokenOf(init) === "secret"),
     ).toBe(true);
+    // …and no request URL leaks the token as a query parameter.
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        new URL(String(input)).searchParams.has("token"),
+      ),
+    ).toBe(false);
     client.stop();
   });
 

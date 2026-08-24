@@ -21,7 +21,7 @@ import {
   type AgentCommand,
   type AgentRunner,
 } from "./agent.js";
-import { applyCors } from "./cors.js";
+import { applyCors, isLoopbackHost } from "./cors.js";
 import {
   ackEntries,
   coalescePendingEntries,
@@ -34,6 +34,8 @@ import { updateEntry } from "./journal.js";
 import { applyCssChanges, verifyCssChanges } from "./css-write.js";
 import { resolveOverlayBundle } from "./overlay-asset.js";
 import { createStaticHandler } from "./static-serve.js";
+import { decodeCssValue } from "../shared/css-values.js";
+import type { ParameterType } from "../shared/index.js";
 
 const MAX_BODY = 1024 * 1024;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -93,13 +95,39 @@ const PARAMETER_TYPES = new Set([
   "easing-curve",
   "scalar",
 ]);
+const optionalString = (value: unknown): boolean =>
+  value === undefined || typeof value === "string";
+function isRule(value: unknown): boolean {
+  return (
+    object(value) &&
+    typeof value.selectorText === "string" &&
+    typeof value.sheetHref === "string" &&
+    optionalString(value.sourceFile)
+  );
+}
 function isChange(value: unknown): value is JournalChange {
   return (
     object(value) &&
     typeof value.param === "string" &&
     PARAMETER_TYPES.has(String(value.type)) &&
     "from" in value &&
-    "to" in value
+    "to" in value &&
+    optionalString(value.var) &&
+    optionalString(value.fromCss) &&
+    optionalString(value.toCss) &&
+    (value.rule === undefined || isRule(value.rule))
+  );
+}
+
+// Structural CSS characters can never appear in a single decodable value, so
+// rejecting them blocks declaration/rule injection through `toCss` regardless
+// of the parameter type (e.g. `1; } body { background: url(...) } .x { --mw-x:1`).
+const CSS_STRUCTURE = /[;{}\n\r]/;
+function unsafeToCss(change: JournalChange): boolean {
+  if (change.toCss === undefined) return false;
+  return (
+    CSS_STRUCTURE.test(change.toCss) ||
+    decodeCssValue(change.type as ParameterType, change.toCss) === null
   );
 }
 function isTypeCorrection(value: unknown): boolean {
@@ -173,17 +201,34 @@ export async function startDaemon(
     options.staticDir === undefined
       ? null
       : createStaticHandler(options.staticDir, options.token);
+  // Routes that expose journal/selection data or mutate the project. Asset
+  // routes (the overlay bundle, static files) stay token-free so a same-origin
+  // page can bootstrap; they carry no secret a cross-origin page could read.
+  const DATA_ROUTES = new Set([
+    "/status",
+    "/pending",
+    "/commit",
+    "/select",
+    "/ack",
+  ]);
   const server = createServer(async (req, res) => {
     if (!applyCors(req, res)) return;
+    if (!isLoopbackHost(req.headers.host)) {
+      res.statusCode = 403;
+      res.end("Forbidden host");
+      return;
+    }
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     try {
-      if (
-        req.method === "POST" &&
-        options.token !== undefined &&
-        url.searchParams.get("token") !== options.token
-      ) {
-        sendJson(res, 401, { error: "Invalid MotionWorks token" });
-        return;
+      if (options.token !== undefined && DATA_ROUTES.has(url.pathname)) {
+        const header = req.headers["x-motionworks-token"];
+        const provided = Array.isArray(header)
+          ? header[0]
+          : (header ?? url.searchParams.get("token") ?? undefined);
+        if (provided !== options.token) {
+          sendJson(res, 401, { error: "Invalid MotionWorks token" });
+          return;
+        }
       }
       if (req.method === "GET" && url.pathname === "/status") {
         const entries = await readJournal(options.projectRoot);
@@ -252,6 +297,10 @@ export async function startDaemon(
         )
           return sendJson(res, 400, {
             error: "Commit contains an unsupported CSS property",
+          });
+        if (value.changes.some(unsafeToCss))
+          return sendJson(res, 400, {
+            error: "Commit contains an invalid or unsafe CSS value",
           });
         const entry = await upsertPendingEntry(options.projectRoot, {
           ...value,
@@ -328,10 +377,26 @@ export async function startDaemon(
                 }
               })
               .catch(async (error: unknown) => {
-                await updateEntry(options.projectRoot, entry.id, {
-                  status: "pending",
-                  error: String(error),
-                });
+                // Best-effort recovery; must not itself reject or the `void`
+                // above becomes an unhandled rejection that crashes the daemon
+                // on Node ≥15 (finding P1-6).
+                try {
+                  await updateEntry(options.projectRoot, entry.id, {
+                    status: "pending",
+                    error: String(error),
+                  });
+                } catch (updateError) {
+                  options.log?.(
+                    `failed to record agent error for ${entry.id}: ${String(updateError)}`,
+                  );
+                }
+              })
+              // Terminal guard: swallow anything the handlers above still throw
+              // (e.g. an updateEntry rejection inside the success path).
+              .catch((error: unknown) => {
+                options.log?.(
+                  `agent completion handler failed for ${entry.id}: ${String(error)}`,
+                );
               });
           }
         }

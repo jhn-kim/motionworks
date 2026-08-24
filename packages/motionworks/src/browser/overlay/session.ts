@@ -20,7 +20,11 @@ import { encodeCssValue } from "../../shared/css-values.js";
 import { deepEqual } from "../deep-equal.js";
 import { describeNode, findInteractiveNode } from "../dom-selector.js";
 import { DaemonClient } from "./daemon-client.js";
-import { loadPersistedDiffs, persistDiffs } from "./diff-persistence.js";
+import {
+  flushPersistedDiffs,
+  loadPersistedDiffs,
+  persistDiffs,
+} from "./diff-persistence.js";
 import { DiffStore, type ReconcileResult } from "./diff-store.js";
 import { TypeOverrideStore } from "./type-overrides.js";
 
@@ -39,6 +43,10 @@ export class OverlaySession {
   readonly daemon: DaemonClient;
   private readonly bridge: Bridge;
   private readonly origin: string;
+  // localStorage scope for uncommitted diffs: origin + pathname, so per-page
+  // effect ids don't collide across routes (P2-7).
+  private readonly diffScope: string;
+  private onPageHide: (() => void) | null = null;
   private stateUnsub: (() => void) | null = null;
   private snapshotUnsub: (() => void) | null = null;
   private diffUnsub: (() => void) | null = null;
@@ -53,6 +61,9 @@ export class OverlaySession {
   private pendingListeners = new Set<() => void>();
   private pendingVersion = 0;
   private committing = new Set<string>();
+  // Effects currently held at their original value by compare mode (P2-3).
+  private held = new Set<string>();
+  private compareListeners = new Set<() => void>();
   private applyingOwnChange = false;
   private stylesUnsub: (() => void) | null = null;
   private startedAt = 0;
@@ -60,6 +71,10 @@ export class OverlaySession {
   constructor({ daemonUrl, debug = false }: OverlaySessionOptions) {
     this.bridge = getBridge();
     this.origin = typeof location === "undefined" ? "" : location.origin;
+    this.diffScope =
+      typeof location === "undefined"
+        ? ""
+        : `${location.origin}${location.pathname}`;
     this.daemon = new DaemonClient(
       daemonUrl,
       debug ? (message) => console.info(`[MotionWorks] ${message}`) : undefined,
@@ -68,14 +83,20 @@ export class OverlaySession {
 
   start(): void {
     this.startedAt = Date.now();
-    this.diffs.hydrate(loadPersistedDiffs(this.origin));
+    this.diffs.hydrate(loadPersistedDiffs(this.diffScope));
     this.snapshotUnsub = this.state.subscribe(() => {
       this.cachedSnapshot = null;
     });
     this.stateUnsub = this.state.subscribe(() => this.onStateChange());
     this.diffUnsub = this.diffs.subscribe(() =>
-      persistDiffs(this.origin, this.diffs.toJSON()),
+      persistDiffs(this.diffScope, this.diffs.toJSON()),
     );
+    // Flush the debounced write before the page goes away so a tweak made in
+    // the last 100 ms isn't lost (P2-7).
+    if (typeof window !== "undefined") {
+      this.onPageHide = () => flushPersistedDiffs();
+      window.addEventListener("pagehide", this.onPageHide);
+    }
     this.statusUnsub = this.daemon.onStatus((status) =>
       this.handleConnectionChange(status !== null),
     );
@@ -106,6 +127,12 @@ export class OverlaySession {
   stop(): void {
     this.daemon.stop();
     this.bridge.detach();
+    if (this.onPageHide !== null && typeof window !== "undefined") {
+      window.removeEventListener("pagehide", this.onPageHide);
+      this.onPageHide = null;
+    }
+    // Persist any debounced diff immediately on teardown.
+    flushPersistedDiffs();
     this.stateUnsub?.();
     this.snapshotUnsub?.();
     this.diffUnsub?.();
@@ -163,6 +190,11 @@ export class OverlaySession {
   manipulate(effectId: string, param: string, value: unknown): void {
     const effect = this.state.getEffect(effectId);
     if (effect === undefined || effect.params[param]?.bound !== true) return;
+    // A live edit supersedes any compare hold on this effect: the page is about
+    // to show the new value, so release the hold and notify the overlay to drop
+    // its "Showing original" state (P2-3).
+    if (this.held.delete(effectId))
+      for (const listener of this.compareListeners) listener();
     this.diffs.recordChange(
       effectId,
       param,
@@ -210,10 +242,18 @@ export class OverlaySession {
   /**
    * Generic replay for effects that don't declare `capabilities.replay`:
    * restart the CSS animations on the effect's node and its subtree so a
-   * one-shot entrance re-runs and a running loop starts over. Toggling
-   * `animation: none` with a forced reflow between is the standard keyframe
-   * re-trigger. Purely JS-driven motion (no CSS animation) has nothing to
-   * restart and is left untouched — those effects opt in via `replay`.
+   * one-shot entrance re-runs and a running loop starts over. Purely JS-driven
+   * motion (no CSS animation) has nothing to restart and is left untouched —
+   * those effects opt in via `replay`.
+   *
+   * We restart the *live* `Animation` objects with `cancel()`+`play()` rather
+   * than toggling `style.animation = "none"`. The style toggle cancels the
+   * running `CSSAnimation` and spawns a brand-new `Animation`; auto-detect keys
+   * its registry by the `Animation` object, so that orphaned the effect's id,
+   * broke the selection, and discarded the uncommitted duration edit stored on
+   * the old `KeyframeEffect` (P0-3). Operating on the same object preserves all
+   * of that. The none+reflow toggle stays as a fallback for elements whose
+   * animation isn't a live object right now (e.g. a finished one-shot).
    */
   replayCssAnimation(effectId: string): void {
     const node = this.bridge.getNode(effectId);
@@ -222,7 +262,20 @@ export class OverlaySession {
       node,
       ...node.querySelectorAll<HTMLElement>("*"),
     ];
+    const cssAnimations = (el: HTMLElement): Animation[] =>
+      typeof el.getAnimations !== "function" ||
+      typeof CSSAnimation === "undefined"
+        ? []
+        : el.getAnimations().filter((a) => a instanceof CSSAnimation);
     for (const el of elements) {
+      const live = cssAnimations(el);
+      if (live.length > 0) {
+        for (const animation of live) {
+          animation.cancel();
+          animation.play();
+        }
+        continue;
+      }
       const name = getComputedStyle(el).animationName;
       if (name === "" || name === "none") continue;
       const previous = el.style.animation;
@@ -254,6 +307,8 @@ export class OverlaySession {
   }
 
   holdBaseline(effectId: string, hold: boolean): void {
+    if (hold) this.held.add(effectId);
+    else this.held.delete(effectId);
     for (const [param, diff] of Object.entries(this.diffs.getDiff(effectId))) {
       for (const target of this.matchingTargets(effectId, param)) {
         applyLive(
@@ -265,6 +320,16 @@ export class OverlaySession {
       }
       this.applyOwnChange(effectId, param, hold ? diff.from : diff.to);
     }
+  }
+
+  /**
+   * Subscribes to compare-hold releases. The overlay uses this to drop its
+   * "Showing original" state the instant a slider drag supersedes the compare
+   * view, so the page and the button label never disagree (P2-3).
+   */
+  onCompareRelease(listener: () => void): () => void {
+    this.compareListeners.add(listener);
+    return () => this.compareListeners.delete(listener);
   }
 
   commit(effectId: string): boolean {
@@ -283,6 +348,9 @@ export class OverlaySession {
         if (queued !== undefined && deepEqual(queued.to, diff.to)) return [];
         const from = queued?.to ?? diff.from;
         const type = this.resolvedType(effectId, param) ?? spec.type;
+        // Resolve the declaring rule once, not twice per change (P2-13).
+        const rule =
+          node === undefined ? undefined : findDeclaringRule(node, spec.var);
         return [
           {
             param,
@@ -292,10 +360,7 @@ export class OverlaySession {
             var: spec.var,
             fromCss: encodeCssValue(type, from, spec.cssUnit),
             toCss: encodeCssValue(type, diff.to, spec.cssUnit),
-            ...(node !== undefined &&
-              findDeclaringRule(node, spec.var) !== undefined && {
-                rule: findDeclaringRule(node, spec.var),
-              }),
+            ...(rule !== undefined && { rule }),
           },
         ];
       },

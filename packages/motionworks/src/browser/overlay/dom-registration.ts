@@ -98,14 +98,46 @@ export function startDomRegistration(): () => void {
     }
   };
   scan();
-  const observer = new MutationObserver(scan);
+
+  // Coalesce mutation bursts into one scan per frame. Previously every DOM
+  // mutation — including the overlay's own per-frame inline-style writes and
+  // any host attribute/text change — re-ran the full scan (two querySelectorAll
+  // plus a JSON round-trip per schema), effectively a 60 Hz document scan while
+  // hovering or dragging (P1-4).
+  let frame: number | null = null;
+  const scheduleScan = (): void => {
+    if (frame !== null) return;
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      scan();
+    });
+  };
+  const isOverlayMutation = (record: MutationRecord): boolean => {
+    const target = record.target;
+    const element =
+      target.nodeType === Node.ELEMENT_NODE
+        ? (target as Element)
+        : target.parentElement;
+    return (
+      element?.closest("[data-motionworks-overlay],[data-motionworks-root]") !=
+      null
+    );
+  };
+  const observer = new MutationObserver((records) => {
+    // Ignore bursts that come only from the overlay's own DOM.
+    if (records.every(isOverlayMutation)) return;
+    scheduleScan();
+  });
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,
     attributes: true,
-    characterData: true,
+    // Only re-scan for the attribute that actually carries a schema, not every
+    // style/class write the app (or the overlay) makes.
+    attributeFilter: ["data-motionworks"],
   });
   return () => {
+    if (frame !== null) cancelAnimationFrame(frame);
     observer.disconnect();
     for (const [el, entry] of registered) bridge.unregister(entry.id, el);
     registered.clear();

@@ -38,18 +38,30 @@ export class DaemonClient {
   private lastPendingJson: string | null = null;
   private statusHandlers = new Set<StatusHandler>();
   private pendingHandlers = new Set<PendingHandler>();
+  private readonly origin: string;
+  private readonly token: string | null;
 
   constructor(
-    private readonly baseUrl: string,
+    baseUrl: string,
     private readonly log: (msg: string) => void = () => {},
-  ) {}
+  ) {
+    const url = new URL(baseUrl);
+    // The token is a shared secret with the daemon; keep it out of request
+    // URLs (history/logs) and send it as a header instead (see S6).
+    this.token = url.searchParams.get("token");
+    url.searchParams.delete("token");
+    this.origin = url.origin;
+  }
 
   private endpoint(path: string): string {
-    const base = new URL(this.baseUrl);
-    const token = base.searchParams.get("token");
-    const url = new URL(path, base.origin);
-    if (token !== null) url.searchParams.set("token", token);
-    return url.href;
+    return new URL(path, this.origin).href;
+  }
+
+  private headers(extra?: Record<string, string>): HeadersInit {
+    return {
+      ...extra,
+      ...(this.token === null ? {} : { "X-MotionWorks-Token": this.token }),
+    };
   }
 
   start(): void {
@@ -130,7 +142,10 @@ export class DaemonClient {
     }
     let status: StatusResponse | null = null;
     try {
-      const res = await fetch(this.endpoint("/status"), FETCH_OPTIONS);
+      const res = await fetch(this.endpoint("/status"), {
+        ...FETCH_OPTIONS,
+        headers: this.headers(),
+      });
       if (res.ok) status = (await res.json()) as StatusResponse;
     } catch (err) {
       this.log(`status poll failed: ${String(err)}`);
@@ -174,7 +189,10 @@ export class DaemonClient {
       return;
     }
     try {
-      const res = await fetch(this.endpoint("/pending"), FETCH_OPTIONS);
+      const res = await fetch(this.endpoint("/pending"), {
+        ...FETCH_OPTIONS,
+        headers: this.headers(),
+      });
       if (res.ok) {
         const entries = (await res.json()) as JournalEntry[];
         const json = JSON.stringify(entries);
@@ -225,7 +243,7 @@ export class DaemonClient {
       const res = await fetch(this.endpoint(path), {
         ...FETCH_OPTIONS,
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this.headers({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload),
       });
       if (!res.ok) {

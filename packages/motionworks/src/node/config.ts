@@ -1,5 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 export const DEFAULT_PORT = 52340;
 const CONFIG_FILE = "motionworks.config.json";
@@ -76,6 +77,42 @@ export async function writeConfigPort(
   );
 }
 
+/** A URL-safe random daemon token (144 bits of entropy). */
+export function generateToken(): string {
+  return randomBytes(18).toString("base64url");
+}
+
+// The token is a machine-local secret, so it lives in the already-gitignored
+// `.motionworks/` directory rather than the shared, committable config file —
+// keeping it out of version control without breaking the shareable pinned port.
+const TOKEN_FILE = join(".motionworks", "token");
+
+/** Reads the persisted daemon token, or undefined when none exists. */
+export async function readToken(root: string): Promise<string | undefined> {
+  try {
+    const token = (await readFile(join(root, TOKEN_FILE), "utf8")).trim();
+    return token === "" ? undefined : token;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+/**
+ * Ensures a daemon token exists, generating and persisting one when absent.
+ * Returns the effective token. This is what makes the daemon authenticated by
+ * default — without it any loopback page could drive it (security finding S1).
+ */
+export async function ensureToken(root: string): Promise<string> {
+  const existing = await readToken(root);
+  if (existing !== undefined) return existing;
+  const token = generateToken();
+  const path = join(root, TOKEN_FILE);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${token}\n`, "utf8");
+  return token;
+}
+
 function parseAgent(raw: unknown): AgentSetting | undefined {
   return raw === "auto" || raw === "claude" || raw === "codex" || raw === "off"
     ? raw
@@ -101,14 +138,17 @@ export async function loadConfig(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  const token = overrides.token ?? file.token;
+  const token = overrides.token ?? file.token ?? (await readToken(root));
   return {
     port:
       overrides.port ??
       parsePort(env.MOTIONWORKS_PORT) ??
       parsePort(file.port) ??
       DEFAULT_PORT,
-    agent: parseAgent(overrides.agent) ?? parseAgent(file.agent) ?? "auto",
+    // Off by default: the auto-agent can edit the workspace, so enabling it is
+    // an explicit per-project opt-in (`--agent` or config), not the default
+    // posture (security finding S2).
+    agent: parseAgent(overrides.agent) ?? parseAgent(file.agent) ?? "off",
     agentTimeoutMs:
       parseTimeout(overrides.agentTimeoutMs) ??
       parseTimeout(file.agentTimeoutMs) ??

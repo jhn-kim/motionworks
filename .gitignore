@@ -45,3 +45,8 @@ yarn-error.log*
 
 # local development harness, not published yet (better demo planned)
 examples/
+
+# local working artifacts (reviews, design scratch, autoresearch logs)
+motionworks-review.md
+design/
+autoresearch/

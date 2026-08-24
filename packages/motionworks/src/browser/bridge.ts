@@ -63,6 +63,23 @@ class Bridge {
       params: validated.params,
       ...(capabilities !== undefined && { capabilities }),
     };
+    // Rebind: this exact node is already registered, so it may be carrying
+    // live inline values that `applyLive` wrote. Undo them (restoring the true
+    // original inline captured at first registration) BEFORE re-reading the
+    // baseline, or `getComputedStyle` would decode the manipulated value as the
+    // source baseline — reconcile would then drop the diff as "clean" and ack a
+    // pending entry that was never written (P1-1). auto-detect already guarded
+    // its keyframe path; this covers the React-hook and DOM-registration paths.
+    const priorInstance = this.instances
+      .get(id)
+      ?.find((item) => item.node === node);
+    if (priorInstance !== undefined)
+      for (const binding of Object.values(priorInstance.bindings)) {
+        if (!binding.var.startsWith("--")) continue;
+        if (binding.inlineBefore === "") node.style.removeProperty(binding.var);
+        else node.style.setProperty(binding.var, binding.inlineBefore);
+      }
+
     const bindings: Record<string, CssBinding> = {};
     const baseline: Record<string, MotionWorksRuntimeParam> = {};
     for (const [key, spec] of Object.entries(effectiveRegistration.params)) {
@@ -91,6 +108,11 @@ class Bridge {
       const index = list.findIndex((item) => item.node === node);
       if (index >= 0) list.splice(index, 1);
       if (list.length > 0) {
+        // A same-id sibling unmounted but others remain. If the just-removed
+        // node was the active one, retarget to a surviving sibling so getNode
+        // never hands back a detached node for replay/commit/select (P1-7).
+        if (node !== null && this.activeNodes.get(id) === node)
+          this.activeNodes.set(id, list[0]!.node);
         this.notify();
         return;
       }

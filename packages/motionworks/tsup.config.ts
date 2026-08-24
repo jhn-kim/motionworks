@@ -34,6 +34,11 @@ export default defineConfig([
     sourcemap: true,
     external: ["react", "react-dom"],
     banner: { js: '"use client";' },
+    // Leave `process.env.NODE_ENV` literal (identity define overrides tsup's
+    // dev default) so the *consumer's* bundler folds it — otherwise the dev
+    // overlay's `IS_DEV` inlines to `true` at publish time and the "renders
+    // nothing in production" guarantee is broken (P0-1).
+    define: { "process.env.NODE_ENV": "process.env.NODE_ENV" },
     tsconfig: "tsconfig.build.json",
   },
   {
@@ -44,6 +49,7 @@ export default defineConfig([
     clean: false,
     sourcemap: true,
     external: ["react", "react-dom"],
+    define: { "process.env.NODE_ENV": "process.env.NODE_ENV" },
     tsconfig: "tsconfig.build.json",
   },
   {

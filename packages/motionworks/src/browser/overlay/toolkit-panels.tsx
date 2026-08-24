@@ -1,10 +1,9 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { MotionWorksParam, ParameterType } from "../../shared/index.js";
 
 import { ColorSwatch } from "./color-picker.js";
 import { useOverlaySession } from "./context.js";
-import { sameTool, useCursorTool } from "./cursor-tool.js";
 import {
   curveForType,
   formatReal,
@@ -149,15 +148,11 @@ function PanelParam({
   entry: PanelParamEntry;
   siblingCount: number;
 }): React.JSX.Element | null {
+  // Only the on-canvas / non-scalar editors reach this panel (gradient,
+  // easing curve, path). Numeric and spring params are edited in the family
+  // slider panel; their armable rows here were never mounted, so they and the
+  // dead cursor tool they depended on have been removed (P0-2).
   switch (type) {
-    case "spring-response":
-      return (
-        <SpringRows
-          effectId={effectId}
-          entry={entry}
-          grouped={siblingCount > 1}
-        />
-      );
     case "gradient":
       return <GradientRows effectId={effectId} entry={entry} />;
     case "path":
@@ -165,14 +160,7 @@ function PanelParam({
     case "easing-curve":
       return <EasingCurveRow effectId={effectId} entry={entry} />;
     default:
-      return typeof entry.liveValue === "number" ? (
-        <NumericRow
-          type={type}
-          effectId={effectId}
-          entry={entry}
-          value={entry.liveValue}
-        />
-      ) : null;
+      return null;
   }
 }
 
@@ -254,266 +242,6 @@ const rangeInputStyle: React.CSSProperties = {
   margin: 0,
 };
 
-// A labelled, armable parameter chip + editable number — the standard
-// control for every numeric parameter type. Clicking the chip arms the
-// cursor tool (the 0–10 dial adjusted by scrolling over the element);
-// clicking again disarms. Exported for the cross-effect choreography panel.
-function SliderControl({
-  label,
-  effectId,
-  paramKey,
-  currentType,
-  value,
-  bounds,
-  unit,
-  onChange,
-  axis,
-}: {
-  label: string;
-  effectId: string;
-  paramKey: string;
-  currentType: ParameterType;
-  value: number;
-  bounds: SliderBounds;
-  unit?: string | undefined;
-  onChange: (next: number) => void;
-  axis?: "stiffness" | "damping" | "mass";
-}): React.JSX.Element {
-  const numberRef = useRef<HTMLInputElement>(null);
-  // Text being typed in the number input; null when not editing so the live
-  // value flows through (a dial adjustment updates the number in real time).
-  const [draft, setDraft] = useState<string | null>(null);
-
-  const { armed, arm, disarm } = useCursorTool();
-  const spec = {
-    min: bounds.min,
-    max: bounds.max,
-    curve: curveForType(currentType),
-  };
-  const tool = {
-    effectId,
-    paramKey,
-    axis,
-    label,
-    unit,
-    spec,
-    type: currentType,
-  };
-  const isArmed = sameTool(armed, tool);
-  const scale = valueToScale(value, spec);
-
-  const clamp = (v: number): number =>
-    Math.min(bounds.max, Math.max(bounds.min, v));
-  const commitDraft = (raw: string): void => {
-    const n = Number(raw);
-    if (Number.isFinite(n)) onChange(clamp(n));
-    setDraft(null);
-  };
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <RowLabel
-        text={label}
-        effectId={effectId}
-        paramKey={paramKey}
-        currentType={currentType}
-        onEnterExactValue={() => numberRef.current?.select()}
-      />
-      <button
-        type="button"
-        aria-label={`${label} — arm cursor tool`}
-        aria-pressed={isArmed}
-        title={
-          isArmed
-            ? "Armed — hover the element and scroll to adjust. Click to disarm."
-            : "Arm: attach to cursor, then scroll over the element to adjust"
-        }
-        onClick={() => {
-          if (isArmed) disarm();
-          else arm(tool);
-        }}
-        style={{
-          flex: 1,
-          minWidth: 60,
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: 6,
-          padding: "3px 9px",
-          border: `1px solid ${isArmed ? "rgba(255, 255, 255, 0.55)" : GLASS.hairline}`,
-          borderRadius: GLASS.radiusSmall,
-          background: isArmed ? GLASS.fillActive : GLASS.fill,
-          color: "rgba(255, 255, 255, 0.95)",
-          cursor: "pointer",
-          fontFamily: FONT.family,
-          transition: "background 120ms ease, border-color 120ms ease",
-        }}
-      >
-        <span style={{ fontSize: FONT.sizeStrong, fontWeight: 600 }}>
-          {formatScale(scale)}
-        </span>
-        <span style={{ fontSize: 9, color: "rgba(255, 255, 255, 0.55)" }}>
-          {formatReal(value, unit)}
-        </span>
-      </button>
-      <input
-        ref={numberRef}
-        type="text"
-        inputMode="decimal"
-        value={draft ?? formatValue(value, bounds.step) + (unit ?? "")}
-        onFocus={(e) => {
-          setDraft(formatValue(value, bounds.step));
-          e.target.select();
-        }}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={(e) => commitDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter")
-            commitDraft((e.target as HTMLInputElement).value);
-          if (e.key === "Escape") setDraft(null);
-        }}
-        style={numberInputStyle}
-        aria-label={`${label} value`}
-      />
-    </div>
-  );
-}
-
-function formatValue(value: number, step: number): string {
-  if (step >= 1) return String(Math.round(value));
-  if (step >= 0.1) return value.toFixed(1);
-  return value.toFixed(2);
-}
-
-// ── Type-specific rows ────────────────────────────────────────────────────
-
-function NumericRow({
-  type,
-  effectId,
-  entry,
-  value,
-}: {
-  type: ParameterType;
-  effectId: string;
-  entry: PanelParamEntry;
-  value: number;
-}): React.JSX.Element {
-  const session = useOverlaySession();
-  const bounds = sliderBoundsFor(entry.param, type);
-  return (
-    <SliderControl
-      label={entry.param.label ?? entry.paramKey}
-      effectId={effectId}
-      paramKey={entry.paramKey}
-      currentType={type}
-      value={value}
-      bounds={bounds}
-      unit={entry.param.unit}
-      onChange={(next) => session.manipulate(effectId, entry.paramKey, next)}
-    />
-  );
-}
-
-interface SpringValue {
-  stiffness: number;
-  damping: number;
-  mass?: number;
-}
-
-function isSpringValue(v: unknown): v is SpringValue {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    typeof (v as SpringValue).stiffness === "number" &&
-    typeof (v as SpringValue).damping === "number"
-  );
-}
-
-function SpringRows({
-  effectId,
-  entry,
-  grouped,
-}: {
-  effectId: string;
-  entry: PanelParamEntry;
-  grouped: boolean;
-}): React.JSX.Element | null {
-  const session = useOverlaySession();
-  // A scalar spring (single number) still gets a plain slider.
-  if (typeof entry.liveValue === "number") {
-    return (
-      <NumericRow
-        type="scalar"
-        effectId={effectId}
-        entry={entry}
-        value={entry.liveValue}
-      />
-    );
-  }
-  if (!isSpringValue(entry.liveValue)) return null;
-  const spring = entry.liveValue;
-  const set = (patch: Partial<SpringValue>): void => {
-    session.manipulate(effectId, entry.paramKey, { ...spring, ...patch });
-  };
-  const axes: {
-    key: keyof SpringValue;
-    text: string;
-    range: { min: number; max: number };
-    value: number;
-  }[] = [
-    {
-      key: "stiffness",
-      text: "Stiffness",
-      range: SPRING_SURFACE.stiffnessRange,
-      value: spring.stiffness,
-    },
-    {
-      key: "damping",
-      text: "Damping",
-      range: SPRING_SURFACE.dampingRange,
-      value: spring.damping,
-    },
-    {
-      key: "mass",
-      text: "Mass",
-      range: SPRING_SURFACE.massRange,
-      value: spring.mass ?? 1,
-    },
-  ];
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {/* Only disambiguate when the effect has several spring params in the
-          same panel — otherwise the section header already says it all. */}
-      {grouped ? (
-        <span
-          style={{
-            fontSize: FONT.sizeLabel,
-            color: "rgba(255, 255, 255, 0.45)",
-            fontFamily: FONT.family,
-          }}
-        >
-          {entry.param.label ?? entry.paramKey}
-        </span>
-      ) : null}
-      {axes.map((axis) => (
-        <SliderControl
-          key={axis.key}
-          label={axis.text}
-          effectId={effectId}
-          paramKey={entry.paramKey}
-          currentType="spring-response"
-          value={axis.value}
-          bounds={{
-            ...axis.range,
-            step: stepForRange(axis.range.max - axis.range.min),
-          }}
-          onChange={(next) => set({ [axis.key]: next })}
-          axis={axis.key}
-        />
-      ))}
-    </div>
-  );
-}
 
 interface GradientStop {
   stop: number;
@@ -727,6 +455,10 @@ function EasingCurveRow({
   // Ref so the drag closure always merges into the LATEST curve, not the one
   // captured at pointerdown. Declared before the early return (rules of hooks).
   const curveRef = useRef<EasingValue>({ x1: 0, y1: 0, x2: 1, y2: 1 });
+  // Tears down an in-flight handle drag's window listeners if the editor
+  // unmounts before pointerup (P2-10).
+  const dragCleanupRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => dragCleanupRef.current(), []);
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (el === null) return;
@@ -772,9 +504,14 @@ function EasingCurveRow({
       const up = (): void => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
+        dragCleanupRef.current = () => undefined;
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
+      dragCleanupRef.current = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
     };
 
   const matchesPreset = (preset: EasingValue): boolean =>

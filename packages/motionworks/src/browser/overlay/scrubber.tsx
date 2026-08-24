@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { MotionWorksEffect } from "../../shared/index.js";
 
@@ -22,6 +22,10 @@ export function Scrubber({
   const session = useOverlaySession();
   const [time, setTime] = useState(0);
   const [dragging, setDragging] = useState(false);
+  // Tears down an in-flight drag's window listeners if the scrubber unmounts
+  // before pointerup fires (P2-10).
+  const dragCleanupRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => dragCleanupRef.current(), []);
 
   const shouldRender =
     active &&
@@ -49,6 +53,7 @@ export function Scrubber({
         setDragging(false);
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
+        dragCleanupRef.current = () => undefined;
         try {
           target.releasePointerCapture(event.pointerId);
         } catch {
@@ -61,6 +66,10 @@ export function Scrubber({
       session.sendReserved(selectedEffect.id, RESERVED_KEYS.scrub, initial);
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
+      dragCleanupRef.current = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
     },
     [selectedEffect, session],
   );

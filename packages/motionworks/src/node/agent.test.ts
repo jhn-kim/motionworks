@@ -74,6 +74,23 @@ describe("agent", () => {
     expect(detectAgent({ PATH: "" })).toBeNull();
   });
 
+  it("finds .cmd/.exe executables on Windows (P2-12f)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "motionworks-agent-win-"));
+    roots.push(root);
+    // A Windows install ships `claude.cmd`, not a bare `claude`.
+    const cmd = join(root, "claude.cmd");
+    await writeFile(cmd, "");
+    await chmod(cmd, 0o755);
+    const original = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      // The pre-fix behaviour (bare name only) would miss claude.cmd entirely.
+      expect(detectAgent({ PATH: root, PATHEXT: ".EXE;.CMD" })).toBe("claude");
+    } finally {
+      Object.defineProperty(process, "platform", { value: original });
+    }
+  });
+
   it("builds constrained instructions and exact argv", () => {
     const instruction = buildInstruction(entry(), "/project");
     expect(instruction).toContain('Exact element selector: ".card"');
@@ -87,7 +104,7 @@ describe("agent", () => {
       "-p",
       instruction,
       "--allowedTools",
-      "Edit,Read,Grep,Glob",
+      "Read,Grep,Glob,Edit(**/*.css),Edit(**/*.scss),Edit(**/*.less)",
       "--permission-mode",
       "acceptEdits",
     ]);
@@ -135,6 +152,28 @@ describe("agent", () => {
     expect(options.env).not.toHaveProperty("CLAUDE_CODE_PARENT");
     process.emit("exit", code, null);
     expect(await result).toMatchObject({ ok });
+  });
+
+  it("surfaces bounded child stderr in the failure error (S2)", async () => {
+    const process = child();
+    (process as unknown as { stderr: EventEmitter }).stderr = new EventEmitter();
+    const runner = createAgentRunner({
+      command: "claude",
+      projectRoot: "/project",
+      timeoutMs: 1000,
+      spawn: (() => process) as AgentSpawn,
+    });
+    const result = runner.run(entry());
+    await vi.waitFor(() => expect(process.kill).toBeDefined());
+    (process as unknown as { stderr: EventEmitter }).stderr.emit(
+      "data",
+      "claude: permission denied writing ~/.zshrc",
+    );
+    process.emit("exit", 1, null);
+    await expect(result).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining("permission denied writing ~/.zshrc"),
+    });
   });
 
   it("kills a timed-out child", async () => {

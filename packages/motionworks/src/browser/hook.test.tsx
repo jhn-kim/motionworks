@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render } from "@testing-library/react";
-import { createRef } from "react";
+import { createRef, useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MotionWorksStateManager } from "../shared/state.js";
 import { getBridge } from "./bridge.js";
@@ -35,8 +35,50 @@ function InvalidFixture(): React.JSX.Element {
     <div ref={ref} style={{ "--mw-radius": "100" } as React.CSSProperties} />
   );
 }
+function ConditionalFixture({ show }: { show: boolean }): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  useMotionWorks(ref, {
+    name: "Card",
+    params: { radius: { type: "spatial-radius" } },
+  });
+  return show ? (
+    <div ref={ref} style={{ "--mw-radius": "100px" } as React.CSSProperties} />
+  ) : (
+    <span />
+  );
+}
+function BoundedFixture({ max }: { max: number }): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  useMotionWorks(ref, {
+    name: "Card",
+    params: { radius: { type: "spatial-radius", min: 0, max } },
+  });
+  return (
+    <div ref={ref} style={{ "--mw-radius": "100px" } as React.CSSProperties} />
+  );
+}
 afterEach(() => getBridge().detach());
 describe("useMotionWorks", () => {
+  it("registers a ref that was null at mount once its element attaches (P2-5)", () => {
+    const state = new MotionWorksStateManager();
+    getBridge().attach(state);
+    const view = render(<ConditionalFixture show={false} />);
+    expect(state.getAllEffects()).toHaveLength(0);
+    view.rerender(<ConditionalFixture show={true} />);
+    expect(state.getAllEffects()[0]?.id).toBe("card#1");
+    view.unmount();
+  });
+
+  it("re-registers when only a bound changes (fingerprint covers min/max) (P2-5)", () => {
+    const state = new MotionWorksStateManager();
+    getBridge().attach(state);
+    const view = render(<BoundedFixture max={200} />);
+    expect(state.getAllEffects()[0]?.params.radius?.max).toBe(200);
+    view.rerender(<BoundedFixture max={400} />);
+    expect(state.getAllEffects()[0]?.params.radius?.max).toBe(400);
+    view.unmount();
+  });
+
   it("registers a CSS baseline and unregisters on unmount", () => {
     const state = new MotionWorksStateManager();
     getBridge().attach(state);

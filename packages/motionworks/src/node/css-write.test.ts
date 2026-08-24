@@ -1,9 +1,11 @@
 import {
+  chmod,
   mkdtemp,
   readFile,
   readdir,
   rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -186,6 +188,56 @@ describe("CSS write", () => {
       reason: expect.stringContaining("same CSS declaration"),
     });
     expect(await readFile(file, "utf8")).toContain("100px");
+  });
+
+  it("matches sourceFile at a path boundary, not any trailing substring (P2-12d)", async () => {
+    await writeFile(join(root, "motion.css"), ".card{--mw-radius:100px}");
+    await writeFile(join(root, "evil-motion.css"), ".card{--mw-radius:100px}");
+    const result = await applyCssChanges(
+      root,
+      entry({
+        rule: { sourceFile: "motion.css", selectorText: ".card", sheetHref: "" },
+      }),
+    );
+    // The unanchored endsWith would have matched evil-motion.css too and made
+    // this ambiguous; the boundary-aware match resolves to exactly one file.
+    expect(result).toMatchObject({ kind: "applied", files: ["motion.css"] });
+    expect(await readFile(join(root, "evil-motion.css"), "utf8")).toContain(
+      "100px",
+    );
+  });
+
+  it("preserves the original file mode across the atomic replace (P2-12e)", async () => {
+    const file = join(root, "a.css");
+    await writeFile(file, ".card{--mw-radius:100px}");
+    await chmod(file, 0o640);
+    expect((await applyCssChanges(root, entry())).kind).toBe("applied");
+    expect((await stat(file)).mode & 0o777).toBe(0o640);
+  });
+
+  it("serializes concurrent writers so neither change is lost (P2-12i)", async () => {
+    const file = join(root, "a.css");
+    await writeFile(file, ".card{--mw-radius:100px; --mw-strength:1}");
+    const strengthEntry = entry({
+      param: "strength",
+      type: "scalar",
+      from: 1,
+      to: 2,
+      var: "--mw-strength",
+      fromCss: "1",
+      toCss: "2",
+    });
+    // Two independent writers touch the same file at once. Without the shared
+    // lock, the second read-modify-write would clobber the first's edit.
+    const [a, b] = await Promise.all([
+      applyCssChanges(root, entry()),
+      applyCssChanges(root, strengthEntry),
+    ]);
+    expect(a.kind).toBe("applied");
+    expect(b.kind).toBe("applied");
+    const contents = await readFile(file, "utf8");
+    expect(contents).toContain("--mw-radius:120px");
+    expect(contents).toContain("--mw-strength:2");
   });
 
   it("verifies that an agent actually wrote every target value", async () => {

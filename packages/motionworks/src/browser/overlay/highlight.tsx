@@ -30,7 +30,19 @@ export function NodeHighlight({
     let raf = 0;
     const tick = (): void => {
       if (cancelled) return;
-      setRect(node.getBoundingClientRect());
+      const next = node.getBoundingClientRect();
+      // Only commit when the rect actually moved. Returning the same reference
+      // makes React bail out, so a still element no longer forces a re-render
+      // (and a downstream overlay repaint) on every single frame (P1-5).
+      setRect((prev) =>
+        prev !== null &&
+        prev.left === next.left &&
+        prev.top === next.top &&
+        prev.width === next.width &&
+        prev.height === next.height
+          ? prev
+          : next,
+      );
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

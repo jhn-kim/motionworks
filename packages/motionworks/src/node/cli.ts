@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { resolve } from "node:path";
-
+import { flagValue, serveDir } from "./cli-args.js";
 import { isProjectRoot, runSetup } from "./setup.js";
 import { checkDrift } from "./drift.js";
 import {
@@ -10,7 +9,12 @@ import {
   runAck,
   runRevert,
 } from "./commands.js";
-import { loadConfig, parsePort, type AgentSetting } from "./config.js";
+import {
+  ensureToken,
+  loadConfig,
+  parsePort,
+  type AgentSetting,
+} from "./config.js";
 import { startDaemon } from "./daemon.js";
 import { detectAgent } from "./agent.js";
 import { PACKAGE_VERSION } from "./version.js";
@@ -26,13 +30,6 @@ const HELP = `Usage:
   npx motionworks init [--yes] [--stanza-only] [--force]      Set up MotionWorks.
   npx motionworks help | --version
 `;
-
-function flagValue(args: string[], name: string): string | undefined {
-  const inline = args.find((arg) => arg.startsWith(`${name}=`));
-  if (inline !== undefined) return inline.slice(name.length + 1);
-  const index = args.indexOf(name);
-  return index >= 0 ? args[index + 1] : undefined;
-}
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -129,6 +126,10 @@ async function main(): Promise<void> {
     packageVersion: PACKAGE_VERSION,
   });
   if (warning !== null) process.stderr.write(`${warning}\n`);
+  // Authenticated by default: mint and persist a machine-local token when the
+  // project has none, so the daemon is never left open to other loopback pages.
+  const freshToken = config.token === undefined;
+  const token = config.token ?? (await ensureToken(process.cwd()));
   try {
     const detectedAgent =
       config.agent === "off"
@@ -141,10 +142,15 @@ async function main(): Promise<void> {
       port: config.port,
       agentSetting: config.agent,
       agentTimeoutMs: config.agentTimeoutMs,
-      token: config.token,
+      token,
       log: (message) => process.stderr.write(`MotionWorks: ${message}\n`),
-      staticDir: command === "serve" ? resolve(args[1] ?? ".") : undefined,
+      staticDir: command === "serve" ? serveDir(args) : undefined,
     });
+    if (freshToken)
+      process.stderr.write(
+        `MotionWorks generated a daemon token in .motionworks/token. ` +
+          `React mounts must pass it: daemonUrl="http://127.0.0.1:${daemon.port}?token=${token}"\n`,
+      );
     process.stderr.write(
       `MotionWorks daemon listening on 127.0.0.1:${daemon.port}\n`,
     );

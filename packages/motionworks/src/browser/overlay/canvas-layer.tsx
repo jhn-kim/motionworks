@@ -35,12 +35,21 @@ export function CanvasLayer({
     };
     resize();
     window.addEventListener("resize", resize);
+    // Pinch-zoom changes the visual viewport without firing window resize, so
+    // also re-sync on visualViewport resize/scroll to keep the canvas aligned
+    // with what the user actually sees (P2-8).
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", resize);
+    viewport?.addEventListener("scroll", resize);
+    const removeListeners = (): void => {
+      window.removeEventListener("resize", resize);
+      viewport?.removeEventListener("resize", resize);
+      viewport?.removeEventListener("scroll", resize);
+    };
 
     if (!active || !hasSelection) {
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-      return () => {
-        window.removeEventListener("resize", resize);
-      };
+      return removeListeners;
     }
 
     const registry = getCanvasRegistry();
@@ -55,7 +64,7 @@ export function CanvasLayer({
     return () => {
       cancelled = true;
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      window.removeEventListener("resize", resize);
+      removeListeners();
     };
   }, [active, hasSelection]);
 

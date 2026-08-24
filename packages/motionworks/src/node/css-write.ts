@@ -1,9 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
 import { cssValuesEqual } from "../shared/css-values.js";
 import type { JournalEntry, ParameterType } from "../shared/index.js";
+import { withJournalLock } from "./journal.js";
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -84,7 +93,8 @@ function candidatesForValue(
       };
     candidates = candidates.filter(
       ({ file }) =>
-        resolve(file) === target || file.endsWith(change.rule!.sourceFile!),
+        resolve(file) === target ||
+        endsWithPathSuffix(file, change.rule!.sourceFile!),
     );
   }
   if (change.rule?.selectorText !== undefined)
@@ -187,6 +197,20 @@ export function findDeclarations(
   return matches;
 }
 
+/**
+ * Path-segment-aware suffix match. `motion.css` matches `.../motion.css` but
+ * not `.../evil-motion.css`, so a `sourceFile` hint can't latch onto an
+ * unrelated file that merely shares a trailing substring (P2-12d).
+ */
+function endsWithPathSuffix(file: string, suffix: string): boolean {
+  const normalizedFile = file.replace(/\\/g, "/");
+  const normalizedSuffix = suffix.replace(/\\/g, "/").replace(/^(?:\.?\/)+/, "");
+  return (
+    normalizedFile === normalizedSuffix ||
+    normalizedFile.endsWith(`/${normalizedSuffix}`)
+  );
+}
+
 function insideRoot(root: string, file: string): boolean {
   const path = relative(resolve(root), resolve(file));
   return (
@@ -200,6 +224,20 @@ export async function applyCssChanges(
   projectRoot: string,
   entry: JournalEntry,
   io: CssFileIo = {},
+): Promise<
+  { kind: "applied"; files: string[] } | { kind: "skipped"; reason: string }
+> {
+  // Serialize CSS writes through the project lock so `runRevert` and the
+  // daemon's writer can't stage/rename the same files concurrently (P2-12i).
+  return withJournalLock(resolve(projectRoot), () =>
+    applyCssChangesLocked(projectRoot, entry, io),
+  );
+}
+
+async function applyCssChangesLocked(
+  projectRoot: string,
+  entry: JournalEntry,
+  io: CssFileIo,
 ): Promise<
   { kind: "applied"; files: string[] } | { kind: "skipped"; reason: string }
 > {
@@ -278,12 +316,20 @@ export async function applyCssChanges(
   const move = io.rename ?? rename;
   const remove = io.unlink ?? unlink;
   const transaction = randomUUID();
-  const staged = [...nextSources].map(([file, source]) => ({
-    file,
-    source,
-    temp: `${file}.motionworks-${transaction}.tmp`,
-    backup: `${file}.motionworks-${transaction}.bak`,
-  }));
+  const staged = await Promise.all(
+    [...nextSources].map(async ([file, source]) => ({
+      file,
+      source,
+      temp: `${file}.motionworks-${transaction}.tmp`,
+      backup: `${file}.motionworks-${transaction}.bak`,
+      // Capture the original file mode so the replacement keeps it rather than
+      // silently reverting to the umask default (P2-12e). The temp is a fresh
+      // inode, so inode identity necessarily changes with an atomic replace.
+      mode: await stat(file)
+        .then((stats) => stats.mode)
+        .catch(() => undefined as number | undefined),
+    })),
+  );
   const removeIfPresent = async (file: string): Promise<void> => {
     try {
       await remove(file);
@@ -293,7 +339,11 @@ export async function applyCssChanges(
   };
 
   try {
-    for (const item of staged) await write(item.temp, item.source, "utf8");
+    for (const item of staged) {
+      await write(item.temp, item.source, "utf8");
+      if (item.mode !== undefined)
+        await chmod(item.temp, item.mode).catch(() => undefined);
+    }
   } catch (error) {
     await Promise.all(
       staged.map(async (item) => {

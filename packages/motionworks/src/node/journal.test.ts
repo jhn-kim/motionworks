@@ -19,6 +19,7 @@ import {
   readJournal,
   updateEntry,
   upsertPendingEntry,
+  withJournalLock,
 } from "./journal.js";
 
 let root: string;
@@ -216,6 +217,23 @@ describe("journal", () => {
     expect(await readJournal(root)).toHaveLength(1);
   });
 
+  it("serializes concurrent lock holders without losing updates (S7)", async () => {
+    // Every critical section reads then writes a shared counter; if the lock
+    // let two holders overlap (or a stale-eviction race dropped a fresh lock),
+    // increments would be lost. All 20 must land.
+    let counter = 0;
+    await Promise.all(
+      Array.from({ length: 20 }, () =>
+        withJournalLock(root, async () => {
+          const seen = counter;
+          await new Promise((r) => setTimeout(r, 1));
+          counter = seen + 1;
+        }),
+      ),
+    );
+    expect(counter).toBe(20);
+  });
+
   it("reports malformed JSON", async () => {
     const dir = join(root, ".motionworks");
     await mkdir(dir);
@@ -223,5 +241,22 @@ describe("journal", () => {
     await expect(readJournal(root)).rejects.toThrow(
       "Failed to read MotionWorks journal",
     );
+  });
+
+  it("drops entries that fail the shape guard on read (P2-12g)", async () => {
+    const dir = join(root, ".motionworks");
+    await mkdir(dir);
+    await writeFile(
+      join(dir, "changes.json"),
+      JSON.stringify([
+        entry("valid"),
+        { id: "no-status", createdAt: 1, changes: [] }, // missing status
+        { status: "pending", createdAt: 1, changes: [] }, // missing id
+        { id: "bad-status", createdAt: 1, status: "weird", changes: [] },
+        "not-an-object",
+        { id: "no-changes", createdAt: 1, status: "pending" }, // missing changes
+      ]),
+    );
+    expect((await readJournal(root)).map((e) => e.id)).toEqual(["valid"]);
   });
 });

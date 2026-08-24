@@ -50,13 +50,26 @@ Object.assign(window as typeof window & { MotionWorks?: typeof api }, {
   MotionWorks: api,
 });
 
-const script = document.currentScript as HTMLScriptElement | null;
+// `document.currentScript` is null when the bundle is loaded with
+// `<script type="module">`; fall back to locating the tag by its src so
+// auto-mount, the token, and daemonUrl still resolve (P2-6).
+const script =
+  (document.currentScript as HTMLScriptElement | null) ??
+  document.querySelector<HTMLScriptElement>('script[src*="motionworks.js"]');
 if (script?.dataset.autoMount !== "false") {
   const daemonUrl = script?.src
     ? (() => {
         const url = new URL(script.src);
-        const token = url.searchParams.get("token");
-        return `${url.origin}${token === null ? "" : `?token=${encodeURIComponent(token)}`}`;
+        // Prefer the same-origin injected global (see static-serve); fall back
+        // to a legacy `?token=` on the script URL for older served pages.
+        const injected = (
+          window as typeof window & { __motionworksToken?: unknown }
+        ).__motionworksToken;
+        const token =
+          typeof injected === "string"
+            ? injected
+            : url.searchParams.get("token");
+        return `${url.origin}${token === null || token === undefined ? "" : `?token=${encodeURIComponent(token)}`}`;
       })()
     : undefined;
   const autoMount = (): void => {

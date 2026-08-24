@@ -288,6 +288,38 @@ describe("OverlaySession", () => {
     expect(listener).toHaveBeenCalledOnce();
   });
 
+  it("releases a compare hold when a manipulation supersedes it (P2-3)", () => {
+    session.manipulate(effectId, "radius", 150);
+    session.holdBaseline(effectId, true); // enter compare (show original)
+    const released = vi.fn();
+    const unsubscribe = session.onCompareRelease(released);
+    // Dragging the slider while comparing must fire a release so the overlay
+    // drops its "Showing original" label.
+    session.manipulate(effectId, "radius", 175);
+    expect(released).toHaveBeenCalledOnce();
+    // A subsequent manipulation (no hold active) does not re-fire.
+    session.manipulate(effectId, "radius", 180);
+    expect(released).toHaveBeenCalledOnce();
+    unsubscribe();
+  });
+
+  it("restarts the live Animation object instead of remounting it (P0-3)", () => {
+    class FakeCssAnimation {
+      cancel = vi.fn();
+      play = vi.fn();
+    }
+    vi.stubGlobal("CSSAnimation", FakeCssAnimation);
+    const animation = new FakeCssAnimation();
+    node.getAnimations = vi.fn(() => [animation as unknown as Animation]);
+    const setAnimation = vi.spyOn(node.style, "animation", "set");
+    session.replayCssAnimation(effectId);
+    // Same object is cancelled + replayed (identity preserved for auto-detect)…
+    expect(animation.cancel).toHaveBeenCalledOnce();
+    expect(animation.play).toHaveBeenCalledOnce();
+    // …and the destructive `style.animation = "none"` toggle is not used.
+    expect(setAnimation).not.toHaveBeenCalled();
+  });
+
   it("commits a type correction without a value change", async () => {
     session.correctType(effectId, "radius", "scalar");
     expect(session.commit(effectId)).toBe(true);

@@ -23,7 +23,7 @@ describe("loadConfig", () => {
   it("uses defaults", async () => {
     expect(await loadConfig(root, {}, {})).toEqual({
       port: 52340,
-      agent: "auto",
+      agent: "off",
       agentTimeoutMs: 120000,
     });
   });
@@ -59,7 +59,7 @@ describe("loadConfig", () => {
     );
     expect(await loadConfig(root, {}, {})).toEqual({
       port: 52340,
-      agent: "auto",
+      agent: "off",
       agentTimeoutMs: 120000,
     });
   });

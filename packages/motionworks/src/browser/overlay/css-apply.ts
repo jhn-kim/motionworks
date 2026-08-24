@@ -349,10 +349,23 @@ export function watchStylesheets(cb: () => void): () => void {
     );
   };
   attach();
+  // Coalesce bursts of stylesheet mutations into one refresh per frame.
+  // `refreshBaselines` runs a synchronous getComputedStyle for every param of
+  // every effect, and CSS-in-JS/Tailwind-JIT dev servers rewrite <style>
+  // textContent rapidly — firing it per characterData mutation was a storm
+  // (P2-2).
+  let frame: number | null = null;
+  const scheduleRefresh = (): void => {
+    if (frame !== null) return;
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      cb();
+    });
+  };
   const observer = new MutationObserver((records) => {
     if (records.some(affectsStylesheets)) {
       attach();
-      cb();
+      scheduleRefresh();
     }
   });
   observer.observe(document.documentElement, {
@@ -363,6 +376,7 @@ export function watchStylesheets(cb: () => void): () => void {
     characterData: true,
   });
   return () => {
+    if (frame !== null) cancelAnimationFrame(frame);
     observer.disconnect();
     for (const link of links) link.removeEventListener("load", onLoad);
   };

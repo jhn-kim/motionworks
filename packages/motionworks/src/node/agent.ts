@@ -26,20 +26,33 @@ export interface AgentRunner {
 }
 
 const TERM_GRACE_MS = 1_000;
+/** Cap on captured agent stderr surfaced in the journal error (bytes). */
+const STDERR_CAP = 4_000;
 
 export function detectAgent(
   env: NodeJS.ProcessEnv = process.env,
 ): AgentCommand | null {
   const path = env.PATH;
   if (path === undefined) return null;
+  // On Windows the executable is `claude.cmd`/`claude.exe`, never a bare
+  // `claude`, so also try each PATHEXT extension (P2-12f). Elsewhere the bare
+  // name is the executable.
+  const extensions =
+    process.platform === "win32"
+      ? ["", ...(env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")].filter(
+          (ext, index, all) => ext === "" || all.indexOf(ext) === index,
+        )
+      : [""];
   for (const command of ["claude", "codex"] as const) {
     for (const directory of path.split(delimiter)) {
       if (directory === "") continue;
-      try {
-        accessSync(join(directory, command), constants.X_OK);
-        return command;
-      } catch {
-        // Keep scanning PATH.
+      for (const ext of extensions) {
+        try {
+          accessSync(join(directory, `${command}${ext}`), constants.X_OK);
+          return command;
+        } catch {
+          // Keep scanning PATH.
+        }
       }
     }
   }
@@ -81,8 +94,13 @@ export function buildArgv(
         "claude",
         "-p",
         instruction,
+        // Path-scope Edit to stylesheet files only: writeback only ever
+        // replaces an existing CSS declaration, so the child has no reason to
+        // touch ~/.zshrc, .git/hooks, .claude/settings.json, etc. (S2). Edits
+        // to anything else fall outside the allowlist and are refused in the
+        // headless `-p` run rather than auto-accepted.
         "--allowedTools",
-        "Edit,Read,Grep,Glob",
+        "Read,Grep,Glob,Edit(**/*.css),Edit(**/*.scss),Edit(**/*.less)",
         "--permission-mode",
         "acceptEdits",
       ]
@@ -162,13 +180,20 @@ export function createAgentRunner({
       stopActive = null;
       resolveCompleted();
     };
+    let stderrTail = "";
     try {
       child = spawn(program!, args, {
         cwd: projectRoot,
         env: childEnv,
-        stdio: "ignore",
+        // Capture stderr (bounded) so a failed agent leaves a diagnostic in the
+        // journal entry's error field instead of a silent void (S2).
+        stdio: ["ignore", "ignore", "pipe"],
       });
       activeChild = child;
+      child.stderr?.on("data", (chunk: Buffer | string) => {
+        if (stderrTail.length >= STDERR_CAP) return;
+        stderrTail = (stderrTail + String(chunk)).slice(-STDERR_CAP);
+      });
     } catch (error) {
       active = false;
       report({ ok: false, error: `Agent failed to start: ${String(error)}` });
@@ -201,7 +226,7 @@ export function createAgentRunner({
           ? { ok: true }
           : {
               ok: false,
-              error: `Agent exited ${code === null ? `with signal ${signal ?? "unknown"}` : `with code ${String(code)}`}`,
+              error: `Agent exited ${code === null ? `with signal ${signal ?? "unknown"}` : `with code ${String(code)}`}${stderrTail.trim() === "" ? "" : `: ${stderrTail.trim()}`}`,
             },
       ),
     );

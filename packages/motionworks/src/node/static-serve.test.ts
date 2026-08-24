@@ -1,7 +1,7 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { startDaemon, type RunningDaemon } from "./daemon.js";
@@ -50,9 +50,12 @@ describe("createStaticHandler", () => {
     expect(((await response.json()) as { ok: boolean }).ok).toBe(true);
   });
 
-  it("injects a configured token into the overlay script URL", async () => {
-    await writeFile(join(dir, "index.html"), "<body>Hello</body>");
-    const handler = createStaticHandler(dir, "a b");
+  it("refuses to follow a symlink that escapes the served root (S5)", async () => {
+    // A secret file outside the served directory, plus an in-root symlink to it.
+    const secret = join(dirname(dir), "escape-secret.txt");
+    await writeFile(secret, "TOP SECRET");
+    await symlink(secret, join(dir, "link.txt"));
+    const handler = createStaticHandler(dir);
     const server = createServer((req, res) => {
       void handler(req, res);
     });
@@ -62,9 +65,34 @@ describe("createStaticHandler", () => {
     const address = server.address();
     const port =
       typeof address === "object" && address !== null ? address.port : 0;
-    expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toContain(
-      "/motionworks.js?token=a%20b",
+    const res = await fetch(`http://127.0.0.1:${port}/link.txt`);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain("SECRET");
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
     );
+    await rm(secret, { force: true });
+  });
+
+  it("injects a configured token via a same-origin global, not the URL (S6)", async () => {
+    await writeFile(join(dir, "index.html"), "<body>Hello</body>");
+    const handler = createStaticHandler(dir, 'a"b');
+    const server = createServer((req, res) => {
+      void handler(req, res);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    const port =
+      typeof address === "object" && address !== null ? address.port : 0;
+    const html = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+    // Token rides in an inline global (safely JSON-escaped), and the script
+    // URL itself carries no token query.
+    expect(html).toContain(
+      'window.__motionworksToken="a\\"b"</script><script src="/motionworks.js">',
+    );
+    expect(html).not.toContain("motionworks.js?token");
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );

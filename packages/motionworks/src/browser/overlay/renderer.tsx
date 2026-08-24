@@ -71,8 +71,14 @@ export function OverlayRenderer({
     // (which would otherwise unmount + remount the portal target).
     const div = document.createElement("div");
     div.setAttribute("data-motionworks-overlay", "");
+    // `isolation:isolate` makes the overlay its own stacking context, so its
+    // launcher/toolbox/panels stack as one group at a near-maximum z-index —
+    // a host `z-index:9999` cookie banner can no longer bury the launcher with
+    // no recovery path. The children keep their internal 9997–10000 ordering
+    // within this context (P1-3). A full shadow-root migration (which would
+    // also stop bidirectional style bleed) is tracked as future work.
     div.style.cssText =
-      "position:fixed;inset:0;pointer-events:none;z-index:9997;";
+      "position:fixed;inset:0;pointer-events:none;z-index:2147483000;isolation:isolate;";
     document.body.appendChild(div);
     setContainer(div);
     return () => {
@@ -136,7 +142,19 @@ function OverlayShell(): React.JSX.Element {
   // clicking the logo again (or Escape) closes it. No hotkeys.
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") requestClose();
+      if (event.key !== "Escape") return;
+      // Don't hijack Escape the host already handled, or Escape pressed while
+      // the user is typing in one of the host's own fields — there it means
+      // "cancel this input", not "close the toolkit" (P2-1).
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target !== null &&
+        (target.isContentEditable ||
+          /^(?:INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      )
+        return;
+      requestClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -436,6 +454,14 @@ export function DynamicToolbox({
   // hold-to-compare with the pointer elsewhere.
   const [comparing, setComparing] = useState(false);
 
+  // Drop compare mode the moment a slider drag supersedes the held baseline, so
+  // the button never says "Showing original" while the page shows the new value
+  // (P2-3).
+  useEffect(
+    () => session.onCompareRelease(() => setComparing(false)),
+    [session],
+  );
+
   useEffect(() => {
     commitVersionRef.current = null;
     committedDiffSignatureRef.current = null;
@@ -454,7 +480,18 @@ export function DynamicToolbox({
   useEffect(() => {
     if (openFamily === null && openEditor === null) return;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // Ignore Escape while a host field is focused — there it cancels the
+      // input, not the MotionWorks drawer (P2-1). Propagation is stopped only
+      // when we actually consume Escape to close the drawer, so the outer
+      // toolkit-close handler doesn't also fire on the same keypress.
+      const target = event.target as HTMLElement | null;
+      if (
+        target !== null &&
+        (target.isContentEditable ||
+          /^(?:INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      )
+        return;
       event.stopPropagation();
       setOpenFamily(null);
       setOpenEditor(null);
@@ -1159,6 +1196,10 @@ function Launcher({
     offY: 0,
   });
   const suppressClickRef = useRef(false);
+  // Removes an in-flight launcher drag's window listeners if it unmounts
+  // mid-drag before pointerup (P2-10).
+  const dragCleanupRef = useRef<() => void>(() => undefined);
+  useEffect(() => () => dragCleanupRef.current(), []);
 
   useEffect(() => {
     const onResize = (): void => {
@@ -1222,6 +1263,7 @@ function Launcher({
     const up = (ev: PointerEvent): void => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      dragCleanupRef.current = () => undefined;
       const d = dragRef.current;
       d.tracking = false;
       if (!d.moved) return;
@@ -1239,6 +1281,10 @@ function Launcher({
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    dragCleanupRef.current = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
   };
 
   return (

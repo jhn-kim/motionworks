@@ -3,6 +3,15 @@ import type { JournalEntry, StatusResponse } from "../shared/index.js";
 import { ackEntries, readJournal, readSelected } from "./journal.js";
 import { applyCssChanges } from "./css-write.js";
 
+/**
+ * Collapses newlines and control characters in page-controlled strings (effect
+ * names, selectors, param keys) so a crafted value cannot forge a fake
+ * "Change …" block in the human-readable output an agent reads (finding S8).
+ */
+function oneLine(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
+}
+
 export function formatChanges(
   entries: JournalEntry[],
   mode: "agent" | "brief" | "json",
@@ -13,7 +22,7 @@ export function formatChanges(
     return entries
       .map(
         (entry) =>
-          `${entry.id}  ${entry.effectName}  ${entry.changes.length} change${entry.changes.length === 1 ? "" : "s"}  ${entry.status}`,
+          `${entry.id}  ${oneLine(entry.effectName)}  ${entry.changes.length} change${entry.changes.length === 1 ? "" : "s"}  ${entry.status}`,
       )
       .join("\n");
   }
@@ -22,19 +31,19 @@ export function formatChanges(
       const changes = entry.changes
         .map(
           (change) =>
-            `  ${change.param}: ${JSON.stringify(change.from)} → ${JSON.stringify(change.to)}`,
+            `  ${oneLine(change.param)}: ${JSON.stringify(change.from)} → ${JSON.stringify(change.to)}`,
         )
         .join("\n");
       const corrections = (entry.typeCorrections ?? [])
         .map(
           (item) =>
-            `  ${item.paramKey}: type ${item.previousType} → ${item.correctedType}`,
+            `  ${oneLine(item.paramKey)}: type ${oneLine(item.previousType)} → ${oneLine(item.correctedType)}`,
         )
         .join("\n");
       return [
         `Change ${entry.id}`,
-        `Effect: ${entry.effectName} (${entry.effectId})`,
-        `Element: ${entry.elementSelector}`,
+        `Effect: ${oneLine(entry.effectName)} (${oneLine(entry.effectId)})`,
+        `Element: ${oneLine(entry.elementSelector)}`,
         changes,
         corrections,
       ]
@@ -93,8 +102,8 @@ export async function formatStatus(
   if (selected === null) lines.push("Selection: none");
   else {
     lines.push(
-      `Selection: ${selected.effectName} (${selected.effectId})`,
-      `Element: ${selected.elementSelector}`,
+      `Selection: ${oneLine(selected.effectName)} (${oneLine(selected.effectId)})`,
+      `Element: ${oneLine(selected.elementSelector)}`,
     );
     if (selected.values !== undefined)
       lines.push(`Values: ${JSON.stringify(selected.values)}`);

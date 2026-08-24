@@ -12,7 +12,19 @@ function fingerprintRegistration(reg: MotionWorksRegistration): string {
   const keys = Object.keys(reg.params).sort();
   for (const key of keys) {
     const p = reg.params[key];
-    parts.push(key, p?.type ?? "", p?.var ?? "");
+    // Include bounds/unit/label, not just key/type/var: an edit to any of them
+    // changes the surface or slider range and must re-register (P2-5). The old
+    // fingerprint omitted these despite the comment below claiming to cover
+    // schema changes.
+    parts.push(
+      key,
+      p?.type ?? "",
+      p?.var ?? "",
+      String(p?.min ?? ""),
+      String(p?.max ?? ""),
+      p?.unit ?? "",
+      p?.label ?? "",
+    );
   }
   return parts.join("|");
 }
@@ -40,25 +52,61 @@ export function useMotionWorks<T extends Element>(
     [registration],
   );
 
+  // What we last registered, so we can detect a changed/attached element and a
+  // changed schema without re-registering on every render.
+  const activeRef = useRef<{
+    node: HTMLElement;
+    id: string;
+    fingerprint: string;
+  } | null>(null);
+
+  // Runs after every commit (cheap when nothing changed). This is what lets a
+  // ref that was null at mount register once it attaches, and a ref reused for
+  // a different element re-point to the new node — the old effect keyed on the
+  // stable ref *object* and never retried either (P2-5). Production stays a
+  // no-op via the IS_DEV guard.
   useEffect(() => {
     if (!IS_DEV) return;
-    const current = registrationRef.current;
     const bridge = getBridge();
     const node = (ref.current as unknown as HTMLElement | null) ?? null;
+    const active = activeRef.current;
+    // The element detached or the ref now points elsewhere: drop the old one.
+    if (active !== null && (node === null || active.node !== node)) {
+      bridge.unregister(active.id, active.node);
+      activeRef.current = null;
+    }
     if (node === null) return;
+    if (
+      activeRef.current !== null &&
+      activeRef.current.node === node &&
+      activeRef.current.fingerprint === fingerprint
+    )
+      return; // nothing changed
+    const current = registrationRef.current;
     const slug = slugify(current.name);
-    const id = idRef.current?.startsWith(`${slug}#`)
-      ? idRef.current
-      : allocateEffectId(slug, node, bridge.getAllNodes());
+    const id =
+      idRef.current?.startsWith(`${slug}#`) === true
+        ? idRef.current
+        : allocateEffectId(slug, node, bridge.getAllNodes());
+    // A rename allocates a new slug id; retire the stale registration on the
+    // same node so it doesn't linger as a duplicate.
+    const stale = activeRef.current;
+    if (stale !== null && stale.id !== id)
+      bridge.unregister(stale.id, stale.node);
     idRef.current = id;
-
     bridge.register(id, node, current);
-    return () => {
-      bridge.unregister(id, node);
-    };
-    // Re-register when the schema fingerprint changes: covers a rename, an
-    // added/removed param, and (crucially for HMR) a baseline value change
-    // from an agent writeback that Fast Refresh keeps as a state-preserving
-    // update instead of a full remount.
-  }, [ref, fingerprint]);
+    activeRef.current = { node, id, fingerprint };
+  });
+
+  // Unregister on unmount only, so the per-render effect above never churns the
+  // registry by tearing down and rebuilding each commit.
+  useEffect(
+    () => () => {
+      if (!IS_DEV) return;
+      const active = activeRef.current;
+      if (active !== null) getBridge().unregister(active.id, active.node);
+      activeRef.current = null;
+    },
+    [],
+  );
 }

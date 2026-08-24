@@ -79,6 +79,7 @@ interface AutoEffect {
   id: string;
   node: HTMLElement;
   occurrence: number;
+  animationName: string;
 }
 
 function allocateAutoEffectId(
@@ -188,21 +189,46 @@ export function startAutoDetect(intervalMs = 1500): () => void {
       if (existing !== undefined && existing.id !== id) {
         bridge.unregister(existing.id, existing.node);
       }
+      // A fresh run supersedes any retained finished animation for the same
+      // element+name (see the retention below), so drop that stale entry.
+      for (const [other, otherEntry] of Array.from(registered.entries())) {
+        if (
+          other !== animation &&
+          otherEntry.node === target &&
+          otherEntry.animationName === name &&
+          otherEntry.occurrence === occurrence
+        ) {
+          if (otherEntry.id !== id)
+            bridge.unregister(otherEntry.id, otherEntry.node);
+          registered.delete(other);
+        }
+      }
       bridge.register(
         id,
         target,
         registration,
         bindKeyframeEffect(keyframeEffect, name, occurrence, animation),
       );
-      registered.set(animation, { id, node: target, occurrence });
+      registered.set(animation, {
+        id,
+        node: target,
+        occurrence,
+        animationName: name,
+      });
     }
 
-    // Unregister effects whose animation stopped or whose element left.
+    // Unregister effects whose element left or whose animation was cancelled.
+    // A one-shot without `fill: forwards` drops out of getAnimations() the
+    // instant it finishes; keeping it registered while its element is still in
+    // the DOM stops it from flickering in then vanishing after <1.5 s — and it
+    // stays replayable via the tracked Animation (P2-9).
     for (const [animation, entry] of Array.from(registered.entries())) {
-      if (!seen.has(animation)) {
-        bridge.unregister(entry.id, entry.node);
-        registered.delete(animation);
-      }
+      if (seen.has(animation)) continue;
+      const retained =
+        entry.node.isConnected && animation.playState === "finished";
+      if (retained) continue;
+      bridge.unregister(entry.id, entry.node);
+      registered.delete(animation);
     }
   };
 
