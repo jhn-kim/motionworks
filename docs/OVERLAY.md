@@ -20,9 +20,10 @@ Closed state is a small draggable launcher chip in a screen corner. Clicking it 
 ## Installation and Mounting
 
 ```bash
-npm install -D motionworks
 npx motionworks init
 ```
+
+`init` is a full installer: it adds `motionworks`, writes the `.gitignore` entry, assigns a per-project port, and scaffolds the agent stanza plus `MOTIONWORKS.md`. A separate `npm install` is not needed. (To test an unpublished build, `npm install <path-to>.tgz` first so `init` uses that local version rather than the registry.)
 
 Start `npx motionworks` from the project root alongside the application's development server.
 

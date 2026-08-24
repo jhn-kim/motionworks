@@ -1,38 +1,39 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getBridge } from "../bridge.js";
-import { HIGHLIGHT } from "./theme.js";
+import { humanizeEffectName } from "./display-name.js";
+import { NodeHighlight } from "./highlight.js";
+import { useSessionState } from "./hooks.js";
 
 // A one-shot "here's what you can edit" cue when the toolkit opens: every
-// registered surface flashes its highlight box in a top-to-bottom sweep, then
-// fades out. Reuses the NodeHighlight box style; the only motion is a staggered
-// opacity pulse whose delay is proportional to each box's vertical position, so
-// it reads as a line sweeping down rather than a strobe of every box at once.
+// registered surface flashes its NodeHighlight (outline + name chip, exactly the
+// hover/selection highlight) in a top-to-bottom sweep, then fades out. The only
+// added motion is a per-surface opacity pulse whose delay is proportional to the
+// surface's vertical position, so it reads as a line sweeping down the page
+// rather than a strobe of every box at once.
 //
-// Density-aware (detection now surfaces far more than early versions did):
-// only on-screen surfaces, capped, snapshot rects once (no per-frame tracking),
-// and fully self-cleaning — it's transient, pointer-events:none, and never
-// touches state or writeback.
+// Density-aware (detection now surfaces far more than early versions did): only
+// on-screen surfaces, capped, delay measured once at open, self-cleaning, and
+// purely visual (pointer-events:none) — it never touches state or writeback.
 
 const SWEEP_MS = 340; // time for the sweep line to travel top → bottom
-const PULSE_MS = 460; // each box's fade in → hold → out
-const MAX_SURFACES = 80;
+const PULSE_MS = 620; // each surface's fade in → hold → out
+const MAX_SURFACES = 60;
+const REVEAL_COLOR = "rgb(255, 255, 255)";
 
-interface RevealBox {
+interface RevealSurface {
   key: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
+  node: HTMLElement;
+  label: string | undefined;
   delay: number;
 }
 
-function snapshotBoxes(): RevealBox[] {
+function collect(nameById: Map<string, string>): RevealSurface[] {
   if (typeof window === "undefined") return [];
   const vh = window.innerHeight;
   const vw = window.innerWidth;
   const seen = new Set<HTMLElement>();
-  const boxes: RevealBox[] = [];
+  const surfaces: RevealSurface[] = [];
   for (const [id, nodes] of getBridge().getAllNodes())
     for (const node of nodes) {
       if (seen.has(node) || !node.isConnected) continue;
@@ -48,18 +49,19 @@ function snapshotBoxes(): RevealBox[] {
         rect.left > vw
       )
         continue;
-      boxes.push({
-        key: `${id}:${String(boxes.length)}`,
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
+      surfaces.push({
+        key: `${id}:${String(surfaces.length)}`,
+        node,
+        label: nameById.get(id),
         // Delay ∝ vertical position → a line sweeping down the page.
         delay: Math.max(0, (rect.top / vh) * SWEEP_MS),
       });
     }
-  boxes.sort((a, b) => a.top - b.top);
-  return boxes.slice(0, MAX_SURFACES);
+  surfaces.sort(
+    (a, b) =>
+      a.node.getBoundingClientRect().top - b.node.getBoundingClientRect().top,
+  );
+  return surfaces.slice(0, MAX_SURFACES);
 }
 
 export function ActivationReveal({
@@ -67,17 +69,26 @@ export function ActivationReveal({
 }: {
   active: boolean;
 }): React.JSX.Element | null {
-  const [boxes, setBoxes] = useState<RevealBox[]>([]);
+  const state = useSessionState();
+  // Read the id→name map at open time without re-triggering the sweep on every
+  // state change.
+  const nameByIdRef = useRef(new Map<string, string>());
+  nameByIdRef.current = new Map(
+    state.effects.map((effect) => [effect.id, humanizeEffectName(effect.name)]),
+  );
+  const [surfaces, setSurfaces] = useState<RevealSurface[]>([]);
 
   useEffect(() => {
     if (!active) {
-      setBoxes([]);
+      setSurfaces([]);
       return;
     }
     // Measure after the open frame so rects are settled.
-    const raf = requestAnimationFrame(() => setBoxes(snapshotBoxes()));
+    const raf = requestAnimationFrame(() =>
+      setSurfaces(collect(nameByIdRef.current)),
+    );
     const clear = window.setTimeout(
-      () => setBoxes([]),
+      () => setSurfaces([]),
       SWEEP_MS + PULSE_MS + 100,
     );
     return () => {
@@ -86,30 +97,28 @@ export function ActivationReveal({
     };
   }, [active]);
 
-  if (boxes.length === 0) return null;
+  if (surfaces.length === 0) return null;
   return (
     <>
       <style
         data-motionworks-overlay-style
-      >{`@keyframes mw-activation-reveal{0%{opacity:0}22%{opacity:1}58%{opacity:1}100%{opacity:0}}`}</style>
-      {boxes.map((box) => (
+      >{`@keyframes mw-activation-reveal{0%{opacity:0}18%{opacity:1}55%{opacity:1}100%{opacity:0}}`}</style>
+      {surfaces.map((surface) => (
+        // A zero-box wrapper carries the staggered opacity pulse; opacity on the
+        // ancestor applies to the fixed-position NodeHighlight it wraps.
         <div
-          key={box.key}
+          key={surface.key}
           style={{
-            position: "fixed",
-            left: box.left - HIGHLIGHT.offset,
-            top: box.top - HIGHLIGHT.offset,
-            width: box.width + HIGHLIGHT.offset * 2,
-            height: box.height + HIGHLIGHT.offset * 2,
-            border: "1.5px solid rgba(255, 255, 255, 0.92)",
-            boxShadow: "0 0 0 1.5px rgba(0, 0, 0, 0.55)",
-            borderRadius: 4,
-            boxSizing: "border-box",
-            pointerEvents: "none",
             opacity: 0,
-            animation: `mw-activation-reveal ${String(PULSE_MS)}ms ease ${String(box.delay)}ms both`,
+            animation: `mw-activation-reveal ${String(PULSE_MS)}ms ease ${String(surface.delay)}ms both`,
           }}
-        />
+        >
+          <NodeHighlight
+            node={surface.node}
+            color={REVEAL_COLOR}
+            label={surface.label}
+          />
+        </div>
       ))}
     </>
   );
