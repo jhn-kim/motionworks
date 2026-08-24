@@ -159,6 +159,9 @@ const ALLOWED_VARS = new Set([
   "animation-duration",
   "animation-delay",
   "animation-timing-function",
+  "transition-duration",
+  "transition-delay",
+  "transition-timing-function",
 ]);
 function isSelect(value: unknown): value is SelectRequest {
   return (

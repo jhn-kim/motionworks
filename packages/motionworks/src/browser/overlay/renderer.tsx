@@ -13,6 +13,7 @@ import type { ParameterType } from "../../shared/index.js";
 import { getBridge } from "../bridge.js";
 import { findInteractiveNode } from "../dom-selector.js";
 import { startAutoDetect } from "./auto-detect.js";
+import { startTransitionDetect } from "./transition-detect.js";
 import { startDomRegistration } from "./dom-registration.js";
 import { CanvasLayer } from "./canvas-layer.js";
 import { OverlaySessionContext, useOverlaySession } from "./context.js";
@@ -174,10 +175,16 @@ function OverlayShell(): React.JSX.Element {
   useEffect(() => startDomRegistration(), []);
 
   // While the overlay is active, otherwise-unregistered CSS keyframe
-  // animations are auto-registered as selectable effects (see auto-detect.ts).
+  // animations and transitions are auto-registered as selectable effects
+  // (see auto-detect.ts / transition-detect.ts).
   useEffect(() => {
     if (!active) return;
-    return startAutoDetect();
+    const stopAnimations = startAutoDetect();
+    const stopTransitions = startTransitionDetect();
+    return () => {
+      stopAnimations();
+      stopTransitions();
+    };
   }, [active]);
 
   useEffect(() => {

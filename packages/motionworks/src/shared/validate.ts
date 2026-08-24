@@ -28,6 +28,9 @@ const SPECIAL_VARS = new Set([
   "animation-duration",
   "animation-delay",
   "animation-timing-function",
+  "transition-duration",
+  "transition-delay",
+  "transition-timing-function",
 ]);
 const warned = new WeakSet<object>();
 const object = (value: unknown): value is Record<string, unknown> =>
