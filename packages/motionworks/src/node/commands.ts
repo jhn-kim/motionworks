@@ -91,10 +91,16 @@ export async function runAck(
 export async function formatStatus(
   root: string,
   port: number,
+  token?: string,
 ): Promise<string> {
   let daemon: StatusResponse | null = null;
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/status`);
+    // /status is token-gated when the project has a token (the default), so the
+    // token must be sent or the daemon answers 401 and status misreports it as
+    // stopped even while it is running.
+    const query =
+      token === undefined ? "" : `?token=${encodeURIComponent(token)}`;
+    const response = await fetch(`http://127.0.0.1:${port}/status${query}`);
     if (response.ok) daemon = (await response.json()) as StatusResponse;
   } catch {
     // A stopped daemon is useful status, not an error.

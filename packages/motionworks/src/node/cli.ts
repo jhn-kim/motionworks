@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   }
   if (command === "status")
     return void process.stdout.write(
-      `${await formatStatus(process.cwd(), config.port)}\n`,
+      `${await formatStatus(process.cwd(), config.port, config.token)}\n`,
     );
   if (command === "revert") {
     const id = args[1];
@@ -181,7 +181,11 @@ async function main(): Promise<void> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
       try {
-        const response = await fetch(`http://127.0.0.1:${config.port}/status`);
+        // /status is token-gated; send the project token so an already-running
+        // daemon is recognized (401 would otherwise look like "not ours").
+        const response = await fetch(
+          `http://127.0.0.1:${config.port}/status?token=${encodeURIComponent(token)}`,
+        );
         if (response.ok)
           throw new Error(
             `already running on 127.0.0.1:${config.port}, use that one or set MOTIONWORKS_PORT`,

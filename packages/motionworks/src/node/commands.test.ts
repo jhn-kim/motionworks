@@ -101,6 +101,27 @@ describe("commands", () => {
     }
   });
 
+  it("reports a token-protected daemon as running only when the token is sent", async () => {
+    const daemon = await startDaemon({
+      projectRoot: root,
+      port: 0,
+      agentSetting: "off",
+      token: "secret token",
+    });
+    try {
+      // Without the token the daemon answers 401; status must not send an
+      // un-tokened request and misreport a running daemon as stopped.
+      expect(await formatStatus(root, daemon.port)).toContain(
+        `Daemon: stopped (127.0.0.1:${daemon.port})`,
+      );
+      expect(await formatStatus(root, daemon.port, "secret token")).toContain(
+        `Daemon: running on 127.0.0.1:${daemon.port}`,
+      );
+    } finally {
+      await daemon.stop();
+    }
+  });
+
   it("includes the saved selection in status", async () => {
     await writeSelected(root, {
       effectId: "card#1",
