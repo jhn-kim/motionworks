@@ -18,5 +18,9 @@
     "prettier-plugin-tailwindcss": "^0.6.11",
     "typescript": "^5.8.2"
   },
+  "optionalDependencies": {
+    "@esbuild/linux-x64": "0.28.2",
+    "@rollup/rollup-linux-x64-gnu": "4.62.4"
+  },
   "packageManager": "npm@11.12.1"
 }
