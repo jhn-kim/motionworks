@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { findInteractiveNode } from "./dom-selector.js";
+import {
+  ensureStableId,
+  findInteractiveNode,
+  watchStableId,
+} from "./dom-selector.js";
 
 function build(html: string): HTMLElement {
   const host = document.createElement("div");
@@ -46,5 +50,45 @@ describe("findInteractiveNode", () => {
     expect(
       findInteractiveNode(host.querySelector<HTMLElement>("#s")!),
     ).toBeNull();
+  });
+});
+
+describe("ensureStableId", () => {
+  it("is idempotent and stable for the same element across calls", () => {
+    const host = build('<div class="row"><span class="dot"></span></div>');
+    const dot = host.querySelector<HTMLElement>(".dot")!;
+    const id = ensureStableId(dot);
+    expect(id).toMatch(/^mw-/);
+    expect(dot.dataset.mwId).toBe(id);
+    expect(ensureStableId(dot)).toBe(id);
+  });
+
+  it("gives class-sharing siblings distinct ids (the loader dots)", () => {
+    const host = build(
+      '<div class="row"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>',
+    );
+    const ids = Array.from(host.querySelectorAll<HTMLElement>(".dot")).map(
+      ensureStableId,
+    );
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it("respects an id a build-time plugin already stamped", () => {
+    const host = build('<span data-mw-id="from-build"></span>');
+    const node = host.querySelector<HTMLElement>("span")!;
+    expect(ensureStableId(node)).toBe("from-build");
+  });
+});
+
+describe("watchStableId", () => {
+  it("re-applies the id when a reload strips the attribute", async () => {
+    const host = build('<span class="dot"></span>');
+    const node = host.querySelector<HTMLElement>("span")!;
+    const stop = watchStableId(node);
+    const id = node.dataset.mwId;
+    expect(id).toBeDefined();
+    node.removeAttribute("data-mw-id");
+    await vi.waitFor(() => expect(node.dataset.mwId).toBe(id));
+    stop();
   });
 });

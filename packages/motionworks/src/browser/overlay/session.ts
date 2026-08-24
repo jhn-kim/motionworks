@@ -19,7 +19,11 @@ import {
 } from "./css-apply.js";
 import { encodeCssValue } from "../../shared/css-values.js";
 import { deepEqual } from "../deep-equal.js";
-import { describeNode, findInteractiveNode } from "../dom-selector.js";
+import {
+  describeNode,
+  ensureStableId,
+  findInteractiveNode,
+} from "../dom-selector.js";
 import { DaemonClient } from "./daemon-client.js";
 import {
   flushPersistedDiffs,
@@ -432,6 +436,7 @@ export class OverlaySession {
       effectId,
       effectName: effect.name,
       elementSelector: node === undefined ? effect.name : describeNode(node),
+      ...(node !== undefined && { mwId: ensureStableId(node) }),
       changes,
       ...(corrections.length > 0 && { typeCorrections: corrections }),
     };

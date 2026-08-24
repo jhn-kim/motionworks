@@ -255,6 +255,14 @@ export interface DeclaringRule {
   selectorText: string;
   sheetHref: string;
   sourceFile?: string;
+  // How many elements in the document the winning selector governs. Greater
+  // than 1 means one declaration is shared across instances, so a writeback
+  // fans out to all of them — the repeated-child / staggered-loader case where
+  // editing "one dot" silently rewrites every dot. `scope` is the same fact in
+  // human-facing form and rides along to the journal so the daemon and the
+  // agent can flag a global edit instead of treating it as local.
+  matchedCount: number;
+  scope: "single" | "shared";
 }
 
 // Pseudo-ELEMENTS a rule can target. `closest()`/`matches()` reject a selector
@@ -265,48 +273,117 @@ export interface DeclaringRule {
 const PSEUDO_ELEMENT_SUFFIX =
   /::?(?:before|after|first-line|first-letter|marker|placeholder|selection|backdrop|file-selector-button)\s*$/i;
 
-function selectorMatchesNode(node: HTMLElement, selectorText: string): boolean {
-  return selectorText.split(",").some((part) => {
-    const trimmed = part.trim();
-    if (trimmed === "") return false;
-    if (trimmed === ":root") return true;
-    const base = trimmed.replace(PSEUDO_ELEMENT_SUFFIX, "").trim();
-    if (base === "") return false;
-    try {
-      return node.closest(base) !== null;
-    } catch {
-      return false;
-    }
-  });
+// Approximate CSS specificity (a,b,c) folded into one comparable number. Used
+// only to pick the cascade winner among rules that declare the same variable
+// and match the node; exact per-spec accounting is unnecessary because document
+// order breaks ties, exactly as the cascade does. Replaces the old
+// last-rule-wins scan, which could target a less specific later rule.
+function selectorSpecificity(selector: string): number {
+  const ids = (selector.match(/#[\w-]+/g) ?? []).length;
+  const classesAttrsPseudoClasses =
+    (selector.match(/\.[\w-]+/g) ?? []).length +
+    (selector.match(/\[[^\]]*\]/g) ?? []).length +
+    (selector.match(/:(?!:)[\w-]+(?:\([^)]*\))?/g) ?? []).length;
+  const typesAndPseudoElements =
+    (selector.match(/::[\w-]+/g) ?? []).length +
+    (selector.match(/(?:^|[\s>+~])[a-zA-Z][\w-]*/g) ?? []).length;
+  return ids * 10000 + classesAttrsPseudoClasses * 100 + typesAndPseudoElements;
 }
+
+interface Candidate {
+  // Base selector (pseudo-element stripped) used for matching and for counting
+  // how many elements the rule governs.
+  baseSelector: string;
+  specificity: number;
+  order: number;
+}
+
+// The part of a rule's selector list that actually matches this node, with its
+// specificity. Custom properties (`--*`) inherit, so an ancestor rule can
+// legitimately supply the value and an ancestor match counts. Regular
+// properties (`animation-duration`, …) do not inherit, so a rule that only
+// matches an ancestor is NOT this node's declaring rule — matching there via
+// `closest` was the old misattribution bug that pinned a container's rule onto
+// a descendant.
+function matchingCandidate(
+  node: HTMLElement,
+  selectorText: string,
+  inherits: boolean,
+  order: number,
+): Candidate | undefined {
+  let best: Candidate | undefined;
+  for (const part of selectorText.split(",")) {
+    const trimmed = part.trim();
+    if (trimmed === "") continue;
+    const base =
+      trimmed === ":root"
+        ? ":root"
+        : trimmed.replace(PSEUDO_ELEMENT_SUFFIX, "").trim();
+    if (base === "") continue;
+    let matched = false;
+    try {
+      if (base === ":root") matched = inherits;
+      else if (inherits) matched = node.closest(base) !== null;
+      else matched = node.matches(base);
+    } catch {
+      matched = false;
+    }
+    if (!matched) continue;
+    const specificity = selectorSpecificity(trimmed);
+    if (best === undefined || specificity >= best.specificity)
+      best = { baseSelector: base, specificity, order };
+  }
+  return best;
+}
+
 export function findDeclaringRule(
   node: HTMLElement,
   varName: string,
 ): DeclaringRule | undefined {
-  let found: DeclaringRule | undefined;
+  const inherits = varName.startsWith("--");
+  let order = 0;
+  let winner:
+    | {
+        selectorText: string;
+        sheetHref: string;
+        sourceFile?: string;
+        candidate: Candidate;
+      }
+    | undefined;
   const visit = (rules: CSSRuleList, sheet: CSSStyleSheet): void => {
     for (const rule of Array.from(rules)) {
       if (rule instanceof CSSStyleRule) {
         try {
+          if (rule.style.getPropertyValue(varName) === "") continue;
+          const candidate = matchingCandidate(
+            node,
+            rule.selectorText,
+            inherits,
+            order++,
+          );
+          if (candidate === undefined) continue;
+          const better =
+            winner === undefined ||
+            candidate.specificity > winner.candidate.specificity ||
+            (candidate.specificity === winner.candidate.specificity &&
+              candidate.order > winner.candidate.order);
+          if (!better) continue;
           const owner =
             (sheet.ownerNode as HTMLElement | null) ??
             Array.from(
               document.querySelectorAll<HTMLStyleElement | HTMLLinkElement>(
                 'style,link[rel="stylesheet"]',
               ),
-            ).find((candidate) => candidate.sheet === sheet) ??
+            ).find((element) => element.sheet === sheet) ??
             null;
-          if (
-            rule.style.getPropertyValue(varName) !== "" &&
-            selectorMatchesNode(node, rule.selectorText)
-          )
-            found = {
-              selectorText: rule.selectorText,
-              sheetHref: sheet.href ?? "",
-              ...(owner?.dataset.viteDevId !== undefined && {
-                sourceFile: owner.dataset.viteDevId,
-              }),
-            };
+          winner = {
+            selectorText: rule.selectorText,
+            sheetHref: sheet.href ?? "",
+            ...(owner?.dataset.viteDevId !== undefined && {
+              sourceFile: owner.dataset.viteDevId,
+            }),
+            candidate,
+          };
         } catch {
           /* Invalid selectors are not candidates. */
         }
@@ -326,7 +403,23 @@ export function findDeclaringRule(
       /* Cross-origin sheet. */
     }
   }
-  return found;
+  if (winner === undefined) return undefined;
+  let matchedCount = 1;
+  try {
+    matchedCount = Math.max(
+      1,
+      document.querySelectorAll(winner.candidate.baseSelector).length,
+    );
+  } catch {
+    matchedCount = 1;
+  }
+  return {
+    selectorText: winner.selectorText,
+    sheetHref: winner.sheetHref,
+    ...(winner.sourceFile !== undefined && { sourceFile: winner.sourceFile }),
+    matchedCount,
+    scope: matchedCount > 1 ? "shared" : "single",
+  };
 }
 
 export function watchStylesheets(cb: () => void): () => void {

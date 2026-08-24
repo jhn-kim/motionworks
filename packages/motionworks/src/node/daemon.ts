@@ -150,6 +150,7 @@ function isCommit(value: unknown): value is CommitRequest {
     typeof value.effectId === "string" &&
     typeof value.effectName === "string" &&
     typeof value.elementSelector === "string" &&
+    (value.mwId === undefined || typeof value.mwId === "string") &&
     Array.isArray(value.changes) &&
     value.changes.every(isChange) &&
     (value.typeCorrections === undefined ||

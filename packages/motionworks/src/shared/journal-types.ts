@@ -10,7 +10,17 @@ export interface JournalChange {
   var?: string;
   fromCss?: string;
   toCss?: string;
-  rule?: { selectorText: string; sheetHref: string; sourceFile?: string };
+  rule?: {
+    selectorText: string;
+    sheetHref: string;
+    sourceFile?: string;
+    // Present when the browser resolved a declaring rule: how many elements the
+    // winning selector governs, and whether the write is local ("single") or
+    // fans out across instances ("shared"). Optional for backward compatibility
+    // with entries written before scope tracking.
+    matchedCount?: number;
+    scope?: "single" | "shared";
+  };
 }
 
 export interface JournalEntry {
@@ -21,6 +31,10 @@ export interface JournalEntry {
   effectId: string;
   effectName: string;
   elementSelector: string;
+  // Durable per-element anchor (`data-mw-id`). Selection and re-selection key to
+  // this; `elementSelector` remains the human-readable structural label.
+  // Optional for backward compatibility with pre-anchor entries.
+  mwId?: string;
   changes: JournalChange[];
   typeCorrections?: TypeCorrection[];
   status: JournalStatus;

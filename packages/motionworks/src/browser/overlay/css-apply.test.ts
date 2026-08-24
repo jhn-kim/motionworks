@@ -62,8 +62,59 @@ describe("CSS apply", () => {
     expect(findDeclaringRule(node, "--mw-radius")).toMatchObject({
       selectorText: ".card",
       sourceFile: "src/a.css",
+      matchedCount: 1,
+      scope: "single",
     });
     node.remove();
+  });
+
+  it("resolves the cascade winner by specificity, not document order", () => {
+    // .card is declared first but is more specific than the later `div` rule;
+    // the old last-rule-wins scan would have written the wrong (`div`) rule.
+    document.head.innerHTML = "<style>.card{--mw-x:2}div{--mw-x:1}</style>";
+    const node = document.createElement("div");
+    node.className = "card";
+    document.body.append(node);
+    expect(findDeclaringRule(node, "--mw-x")).toMatchObject({
+      selectorText: ".card",
+      scope: "single",
+    });
+    node.remove();
+  });
+
+  it("flags a shared rule that governs several instances (staggered loader)", () => {
+    document.head.innerHTML = "<style>.dot{--mw-delay:0.16s}</style>";
+    const dots = [0, 1, 2].map(() => {
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      document.body.append(dot);
+      return dot;
+    });
+    const resolved = findDeclaringRule(dots[1]!, "--mw-delay");
+    expect(resolved).toMatchObject({
+      selectorText: ".dot",
+      matchedCount: 3,
+      scope: "shared",
+    });
+    for (const dot of dots) dot.remove();
+  });
+
+  it("does not misattribute a container's non-inheriting rule to a child", () => {
+    // animation-duration does not inherit: a rule that only matches the ancestor
+    // is not the child's declaring rule. A custom property, which inherits, is.
+    document.head.innerHTML =
+      "<style>.wrap{animation-duration:1s;--mw-speed:1}</style>";
+    const wrap = document.createElement("div");
+    wrap.className = "wrap";
+    const child = document.createElement("span");
+    wrap.append(child);
+    document.body.append(wrap);
+    expect(findDeclaringRule(child, "animation-duration")).toBeUndefined();
+    expect(findDeclaringRule(child, "--mw-speed")).toMatchObject({
+      selectorText: ".wrap",
+      scope: "single",
+    });
+    wrap.remove();
   });
 
   it("locates a pseudo-element rule by its originating element", () => {
