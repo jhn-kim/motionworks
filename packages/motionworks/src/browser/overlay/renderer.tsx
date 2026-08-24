@@ -25,6 +25,7 @@ import { OverlaySessionContext, useOverlaySession } from "./context.js";
 import { type ArmedTool } from "./cursor-tool.js";
 import { humanizeEffectName } from "./display-name.js";
 import { ElementsPanel, LayersPanel, scopedEffects } from "./global-panels.js";
+import { ActivationReveal } from "./activation-reveal.js";
 import { NodeHighlight } from "./highlight.js";
 import {
   useAgentQueue,
@@ -211,6 +212,7 @@ function OverlayShell(): React.JSX.Element {
         interact={interact}
         selectedEffectId={selectedEffect?.id ?? null}
       />
+      <ActivationReveal active={active} />
       <Scrubber active={active} selectedEffect={selectedEffect} />
       {phase !== "closed" ? (
         <DynamicToolbox
