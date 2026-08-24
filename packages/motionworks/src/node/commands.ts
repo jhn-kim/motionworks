@@ -1,10 +1,12 @@
 import type {
   AdoptionEntry,
+  DiscoveredAnimation,
   JournalEntry,
   StatusResponse,
 } from "../shared/index.js";
 
 import { readAdoptions, updateAdoption } from "./adoptions.js";
+import { type DiscoverResult, runDiscover } from "./discover.js";
 import { buildAdoptInstruction } from "./agent.js";
 import { ackEntries, readJournal, readSelected } from "./journal.js";
 import { applyCssChanges } from "./css-write.js";
@@ -143,6 +145,41 @@ export function formatAdoptions(
   return entries
     .map((entry) => `# ${entry.id}\n${buildAdoptInstruction(entry, root)}`)
     .join("\n\n");
+}
+
+export async function scanDiscoveries(root: string): Promise<DiscoverResult> {
+  return runDiscover(root);
+}
+
+// Human-readable inventory for an agent: significant, high-confidence findings
+// first, grouped so taste can be applied on top of guaranteed recall. The
+// artifact itself (.motionworks/js-animations.json) is the machine surface.
+export function formatDiscover(result: DiscoverResult): string {
+  const { inventory, added, removed } = result;
+  if (inventory.length === 0)
+    return "No JS-driven animations found (Framer Motion / GSAP / react-spring). Nothing to inventory.";
+  const line = (e: DiscoveredAnimation): string => {
+    const where = `${e.file}:${String(e.line)}`;
+    const count = e.count !== undefined ? ` ×${String(e.count)}` : "";
+    const lits =
+      e.literals !== undefined
+        ? ` {${Object.entries(e.literals)
+            .map(([k, v]) => `${k}: ${String(v)}`)
+            .join(", ")}}`
+        : "";
+    const flags = [
+      e.confidence === "low" ? "confirm-before-lift" : "",
+      e.status !== "pending" ? e.status : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    return `  [${e.significance}/${e.confidence}] ${oneLine(e.api)}${count}${lits} — ${where} (${e.library})${flags === "" ? "" : ` [${flags}]`}`;
+  };
+  const header =
+    `${String(inventory.length)} JS animation${inventory.length === 1 ? "" : "s"} inventoried` +
+    ` — ${String(added.length)} new, ${String(removed.length)} gone since last scan.` +
+    `\nRanked by significance. Lift only what the designer confirms; never auto-lift a "confirm-before-lift" (low-confidence) finding.\n`;
+  return `${header}\n${inventory.map(line).join("\n")}`;
 }
 
 export async function runAdoptAck(

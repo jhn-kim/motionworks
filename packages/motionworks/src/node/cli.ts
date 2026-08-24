@@ -5,12 +5,14 @@ import { checkDrift } from "./drift.js";
 import {
   formatAdoptions,
   formatChanges,
+  formatDiscover,
   formatStatus,
   pendingAdoptions,
   pendingChanges,
   runAck,
   runAdoptAck,
   runRevert,
+  scanDiscoveries,
 } from "./commands.js";
 import {
   ensureToken,
@@ -28,6 +30,7 @@ const HELP = `Usage:
   npx motionworks serve <dir> [--port N]                      Serve a static site and overlay.
   npx motionworks changes [--json|--brief]                    Show pending changes.
   npx motionworks ack <id>|--all                              Acknowledge changes.
+  npx motionworks discover                                    Inventory JS-driven animations (static scan).
   npx motionworks adoptions                                   Show JS animations awaiting adoption.
   npx motionworks adopt-ack <id>                              Mark an adoption done.
   npx motionworks status                                      Show daemon and selection.
@@ -111,6 +114,10 @@ async function main(): Promise<void> {
     );
     return;
   }
+  if (command === "discover")
+    return void process.stdout.write(
+      `${formatDiscover(await scanDiscoveries(process.cwd()))}\n`,
+    );
   if (command === "adoptions")
     return void process.stdout.write(
       `${formatAdoptions(await pendingAdoptions(process.cwd()), process.cwd())}\n`,

@@ -91,6 +91,38 @@ export interface AdoptionEntry extends AdoptionRequest {
   error?: string;
 }
 
+/**
+ * A JS-driven animation located by a STATIC source scan (`motionworks
+ * discover`), as opposed to the runtime GSAP registry. The scan is the
+ * authoritative inventory of what motion exists in the source tree; runtime
+ * probes only confirm liveness and capture live numeric values. Written to
+ * `.motionworks/js-animations.json` as a durable, diffable artifact the agent
+ * reasons over instead of re-deriving a grep each session.
+ */
+export interface DiscoveredAnimation {
+  /** Stable id: hash of file + api + target, so re-scans diff cleanly. */
+  id: string;
+  /** Repo-relative POSIX path. */
+  file: string;
+  /** 1-based line of the primary usage site. */
+  line: number;
+  library: "framer-motion" | "gsap" | "react-spring";
+  /** The recognised API surface, e.g. "motion.div", "useSpring", "gsap.to". */
+  api: string;
+  /** The element/component the animation drives, when statically knowable. */
+  target?: string;
+  /** How much the animation likely matters to a designer (ranking, not certainty). */
+  significance: "high" | "medium" | "low";
+  /** How certain the STATIC scan is that this is a real, liftable animation. */
+  confidence: "high" | "medium" | "low";
+  /** Grouped count when the same call is mapped over a list (deduped to one entry). */
+  count?: number;
+  /** Exact source literals captured for a byte-accurate lift (e.g. { duration: 0.6 }). */
+  literals?: Record<string, number | string>;
+  /** Triage lifecycle, mirroring the adoption journal. */
+  status: "pending" | "adopted" | "skipped";
+}
+
 export interface SelectRequest {
   effectId: string;
   effectName: string;

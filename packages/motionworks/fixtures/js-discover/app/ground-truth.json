@@ -1,0 +1,104 @@
+{
+  "expected": [
+    {
+      "file": "src/Hero.tsx",
+      "library": "framer-motion",
+      "api": "motion.section",
+      "target": "section",
+      "confidence": "high",
+      "significance": "high",
+      "literals": { "duration": 0.6 }
+    },
+    {
+      "file": "src/AliasCard.tsx",
+      "library": "framer-motion",
+      "api": "m.div",
+      "target": "div",
+      "confidence": "high",
+      "significance": "high",
+      "literals": { "duration": 0.3 }
+    },
+    {
+      "file": "src/AliasCard.tsx",
+      "library": "framer-motion",
+      "api": "motion()",
+      "target": "Card",
+      "confidence": "medium",
+      "significance": "medium"
+    },
+    {
+      "file": "src/Hooks.tsx",
+      "library": "framer-motion",
+      "api": "useAnimate",
+      "confidence": "medium",
+      "significance": "medium"
+    },
+    {
+      "file": "src/Hooks.tsx",
+      "library": "framer-motion",
+      "api": "useScroll",
+      "confidence": "medium",
+      "significance": "high"
+    },
+    {
+      "file": "src/Hooks.tsx",
+      "library": "framer-motion",
+      "api": "useSpring",
+      "confidence": "medium",
+      "significance": "medium"
+    },
+    {
+      "file": "src/Springy.tsx",
+      "library": "react-spring",
+      "api": "useSpring",
+      "confidence": "high",
+      "significance": "medium"
+    },
+    {
+      "file": "src/Springy.tsx",
+      "library": "react-spring",
+      "api": "useTransition",
+      "confidence": "medium",
+      "significance": "medium"
+    },
+    {
+      "file": "src/GsapScroll.tsx",
+      "library": "gsap",
+      "api": "gsap.to",
+      "confidence": "high",
+      "significance": "high",
+      "literals": { "duration": 1.2 }
+    },
+    {
+      "file": "src/GsapScroll.tsx",
+      "library": "gsap",
+      "api": "gsap.from",
+      "confidence": "high",
+      "significance": "medium",
+      "literals": { "duration": 0.4 }
+    },
+    {
+      "file": "src/Spread.tsx",
+      "library": "framer-motion",
+      "api": "motion.div",
+      "target": "div",
+      "confidence": "low",
+      "significance": "medium"
+    },
+    {
+      "file": "src/List.tsx",
+      "library": "framer-motion",
+      "api": "motion.li",
+      "target": "li",
+      "confidence": "high",
+      "significance": "low",
+      "count": 3
+    }
+  ],
+  "negativeFiles": [
+    "src/App.test.tsx",
+    "src/Button.stories.tsx",
+    "src/commented.tsx",
+    "node_modules/framer-motion/index.js"
+  ]
+}

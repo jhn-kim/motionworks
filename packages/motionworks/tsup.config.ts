@@ -60,6 +60,10 @@ export default defineConfig([
     format: ["esm"],
     platform: "node",
     target: "node18",
+    // `discover` loads TypeScript at runtime from the host project (every built
+    // React + Framer/GSAP codebase has it). Never bundle the compiler — it
+    // would add megabytes and defeat the package's zero-runtime-dep design.
+    external: ["typescript"],
     dts: {
       entry: { node: "src/node/index.ts" },
     },

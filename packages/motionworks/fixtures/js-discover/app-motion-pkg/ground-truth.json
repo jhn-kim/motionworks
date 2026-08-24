@@ -1,0 +1,14 @@
+{
+  "expected": [
+    {
+      "file": "src/NewPkg.tsx",
+      "library": "framer-motion",
+      "api": "motion.div",
+      "target": "div",
+      "confidence": "high",
+      "significance": "high",
+      "literals": { "duration": 0.8 }
+    }
+  ],
+  "negativeFiles": []
+}

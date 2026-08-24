@@ -25,6 +25,7 @@ export type {
   AdoptionParam,
   AdoptionRequest,
   CommitRequest,
+  DiscoveredAnimation,
   JournalChange,
   JournalEntry,
   JournalStatus,

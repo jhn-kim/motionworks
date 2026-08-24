@@ -1,0 +1,8 @@
+{
+  "name": "js-discover-fixture-motion-pkg",
+  "private": true,
+  "dependencies": {
+    "motion": "^11.11.0",
+    "react": "^19.0.0"
+  }
+}
