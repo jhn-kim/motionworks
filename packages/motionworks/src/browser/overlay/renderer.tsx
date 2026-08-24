@@ -118,11 +118,12 @@ function OverlayShell(): React.JSX.Element {
   // Which screen edge the toolkit (and launcher) anchors to. Mirrored
   // anatomy at the top; changed only by dragging the bar.
   const [dock, setDock] = useState<"bottom" | "top">("bottom");
-  // Interact mode: while on, clicks pass through to the app so the designer can
-  // drive click/app-state animations (accordions, menus) and watch them play,
-  // instead of the click selecting an element. A held Alt key is a momentary
-  // equivalent (see SelectionEngine). Selection is preserved across the toggle.
-  const [interact, setInteract] = useState(false);
+  // Select mode. Default OFF: the app behaves as if the tool were closed — every
+  // click, link, and button works, so the designer can navigate and trigger
+  // click/app-state animations (accordions, menus). Turning Select ON is what
+  // makes clicks select an element to edit. Selection is preserved across the
+  // toggle, and the Layers/surfaces panel selects without needing Select on.
+  const [selectMode, setSelectMode] = useState(false);
   const active = phase === "open";
   const session = useOverlaySession();
   const connected = useConnection();
@@ -209,7 +210,7 @@ function OverlayShell(): React.JSX.Element {
     <>
       <SelectionEngine
         active={active}
-        interact={interact}
+        selectMode={selectMode}
         selectedEffectId={selectedEffect?.id ?? null}
       />
       <ActivationReveal active={active} />
@@ -221,8 +222,8 @@ function OverlayShell(): React.JSX.Element {
           dock={dock}
           onDockChange={setDock}
           onClose={requestClose}
-          interact={interact}
-          onToggleInteract={() => setInteract((v) => !v)}
+          selectMode={selectMode}
+          onToggleSelect={() => setSelectMode((v) => !v)}
         />
       ) : (
         <Launcher
@@ -336,8 +337,8 @@ interface DynamicToolboxProps {
   dock: "bottom" | "top";
   onDockChange: (dock: "bottom" | "top") => void;
   onClose: () => void;
-  interact?: boolean;
-  onToggleInteract?: () => void;
+  selectMode?: boolean;
+  onToggleSelect?: () => void;
 }
 
 export function resolveVerbAvailability({
@@ -387,8 +388,8 @@ export function DynamicToolbox({
   dock,
   onDockChange,
   onClose,
-  interact = false,
-  onToggleInteract = () => undefined,
+  selectMode = false,
+  onToggleSelect = () => undefined,
 }: DynamicToolboxProps): React.JSX.Element {
   const session = useOverlaySession();
 
@@ -855,6 +856,19 @@ export function DynamicToolbox({
       });
     }
 
+    // Select mode: off by default so the app stays fully usable (buttons, links,
+    // accordions all work); turning it on makes clicks select an element to edit.
+    result.push({
+      id: "select",
+      label: selectMode
+        ? "Selecting — click an element to edit it"
+        : "Select — turn on to pick an element to edit",
+      kind: "action",
+      icon: ICONS.select,
+      selected: selectMode,
+      onClick: onToggleSelect,
+    });
+
     // Layers/browse is always present: with a selection it scopes to the
     // nested animations; without one it lists every animation on the page.
     result.push({
@@ -872,20 +886,6 @@ export function DynamicToolbox({
         setOpenEditor(null);
         setShowLayers((v) => !v);
       },
-    });
-
-    // Interact mode: flip clicks between selecting and driving the app, so a
-    // designer can trigger a click/app-state animation (accordion, menu) and
-    // watch it play. Hold Alt for a momentary equivalent.
-    result.push({
-      id: "interact",
-      label: interact
-        ? "Interacting — clicks drive the app (Alt-click to select)"
-        : "Interact — click the app to trigger animations",
-      kind: "action",
-      icon: ICONS.interact,
-      selected: interact,
-      onClick: onToggleInteract,
     });
 
     // The four parameter families are a fixed scaffold shown from the moment
@@ -957,8 +957,8 @@ export function DynamicToolbox({
     queueSignature,
     showAgentQuip,
     onClose,
-    interact,
-    onToggleInteract,
+    selectMode,
+    onToggleSelect,
   ]);
 
   // ── Family panel contents ───────────────────────────────────────────────
