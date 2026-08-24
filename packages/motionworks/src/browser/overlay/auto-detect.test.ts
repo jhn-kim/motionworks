@@ -87,6 +87,85 @@ describe("CSS animation auto-detection", () => {
     stop();
   });
 
+  it("groups elements driven by one shared rule into a single surface", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("CSSAnimation", FakeCssAnimation);
+    vi.stubGlobal("KeyframeEffect", FakeKeyframeEffect);
+    const state = new MotionWorksStateManager();
+    getBridge().attach(state);
+    // One declaration governs all three dots — the staggered-loader case.
+    document.head.innerHTML =
+      "<style>.dot{animation-duration:1s;animation-name:bounce}</style>";
+    const dots = [0, 1, 2].map(() => {
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      document.body.appendChild(dot);
+      return dot;
+    });
+    const animations = dots.map(
+      (dot) =>
+        new FakeCssAnimation(
+          "bounce",
+          new FakeKeyframeEffect(dot, { duration: 1000, easing: "linear" }),
+        ),
+    ) as unknown as Animation[];
+    Object.defineProperty(document, "getAnimations", {
+      configurable: true,
+      value: () => animations,
+    });
+
+    const stop = startAutoDetect(10);
+    // One selectable surface, not bounce#1/#2/#3.
+    expect(state.getAllEffects().map((effect) => effect.id)).toEqual([
+      "bounce#1",
+    ]);
+    // But all three dots ride under it as instances, so an edit reaches them all.
+    const nodes = getBridge()
+      .getInstances("bounce#1")
+      .map((instance) => instance.node);
+    expect(nodes).toEqual(dots);
+    stop();
+    document.head.innerHTML = "";
+  });
+
+  it("keeps elements with independent rules as separate surfaces", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("CSSAnimation", FakeCssAnimation);
+    vi.stubGlobal("KeyframeEffect", FakeKeyframeEffect);
+    const state = new MotionWorksStateManager();
+    getBridge().attach(state);
+    // Two elements, two rules each governing only itself → not a group.
+    document.head.innerHTML =
+      "<style>.a{animation-duration:1s;animation-name:bounce}.b{animation-duration:1s;animation-name:bounce}</style>";
+    const a = document.createElement("span");
+    a.className = "a";
+    const b = document.createElement("span");
+    b.className = "b";
+    document.body.append(a, b);
+    const animations = [
+      new FakeCssAnimation(
+        "bounce",
+        new FakeKeyframeEffect(a, { duration: 1000, easing: "linear" }),
+      ),
+      new FakeCssAnimation(
+        "bounce",
+        new FakeKeyframeEffect(b, { duration: 1000, easing: "linear" }),
+      ),
+    ] as unknown as Animation[];
+    Object.defineProperty(document, "getAnimations", {
+      configurable: true,
+      value: () => animations,
+    });
+
+    const stop = startAutoDetect(10);
+    expect(state.getAllEffects().map((effect) => effect.id)).toEqual([
+      "bounce#1",
+      "bounce#2",
+    ]);
+    stop();
+    document.head.innerHTML = "";
+  });
+
   it("marks a scroll-driven animation manualTrigger and suppresses its duration (F2/F3)", () => {
     vi.useFakeTimers();
     vi.stubGlobal("CSSAnimation", FakeCssAnimation);
