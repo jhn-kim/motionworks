@@ -702,7 +702,16 @@ export function DynamicToolbox({
       !manualTrigger &&
       bridgeNode !== null &&
       findInteractiveNode(bridgeNode) === bridgeNode;
-    if (selectedEffect !== null && manualTrigger) {
+    // A JS-driven effect (react-spring/GSAP) that declared no capabilities.replay
+    // has nothing for the CSS-restart fallback to restart, so Play would silently
+    // no-op. Render it inert with the "trigger it" chip instead of a dead button.
+    const deadReplay =
+      selectedEffect !== null &&
+      !replayCapable &&
+      !manualTrigger &&
+      !pressSelf &&
+      !session.hasReplayableCssAnimation(selectedEffect.id);
+    if (selectedEffect !== null && (manualTrigger || deadReplay)) {
       result.push({
         id: "replay",
         label: "Play animation",

@@ -281,6 +281,36 @@ export class OverlaySession {
    * of that. The none+reflow toggle stays as a fallback for elements whose
    * animation isn't a live object right now (e.g. a finished one-shot).
    */
+  /**
+   * Whether `replayCssAnimation` would actually restart something: the node or
+   * its subtree has a non-scroll CSS animation (live, or a named animation the
+   * none+reflow toggle can restart). Used to keep the Play button from looking
+   * live on a JS-driven effect (react-spring/GSAP) that declared no
+   * `capabilities.replay` — there is no CSS animation to restart, so Play would
+   * silently do nothing; the toolkit shows the inert "trigger it" chip instead.
+   */
+  hasReplayableCssAnimation(effectId: string): boolean {
+    const node = this.bridge.getNode(effectId);
+    if (node === undefined) return false;
+    const elements: HTMLElement[] = [
+      node,
+      ...node.querySelectorAll<HTMLElement>("*"),
+    ];
+    for (const el of elements) {
+      if (
+        typeof el.getAnimations === "function" &&
+        typeof CSSAnimation !== "undefined" &&
+        el
+          .getAnimations()
+          .some((a) => a instanceof CSSAnimation && !isScrollDriven(a))
+      )
+        return true;
+      const name = getComputedStyle(el).animationName;
+      if (name !== "" && name !== "none") return true;
+    }
+    return false;
+  }
+
   replayCssAnimation(effectId: string): void {
     const node = this.bridge.getNode(effectId);
     if (node === undefined) return;
