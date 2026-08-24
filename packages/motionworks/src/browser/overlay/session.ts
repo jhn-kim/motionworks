@@ -13,6 +13,7 @@ import { EVENTS } from "../css-bindings.js";
 import {
   applyLive,
   findDeclaringRule,
+  isScrollDriven,
   restoreLive,
   watchStylesheets,
 } from "./css-apply.js";
@@ -266,7 +267,12 @@ export class OverlaySession {
       typeof el.getAnimations !== "function" ||
       typeof CSSAnimation === "undefined"
         ? []
-        : el.getAnimations().filter((a) => a instanceof CSSAnimation);
+        : el
+            .getAnimations()
+            // Scroll/view-driven animations can't be restarted from script —
+            // play() cannot advance a scroll-bound timeline — so a subtree
+            // replay leaves them to the designer to trigger.
+            .filter((a) => a instanceof CSSAnimation && !isScrollDriven(a));
     for (const el of elements) {
       const live = cssAnimations(el);
       if (live.length > 0) {

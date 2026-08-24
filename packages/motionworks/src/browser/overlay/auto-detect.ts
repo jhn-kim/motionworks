@@ -5,7 +5,7 @@ import {
 
 import { getBridge } from "../bridge.js";
 import { slugify } from "../ids.js";
-import { bindKeyframeEffect } from "./css-apply.js";
+import { bindKeyframeEffect, isScrollDriven } from "./css-apply.js";
 
 // Auto-registration of CSS keyframe animations. Anything running via
 // @keyframes is discovered through document.getAnimations() and registered
@@ -146,8 +146,13 @@ export function startAutoDetect(intervalMs = 1500): () => void {
         continue;
 
       const timing = keyframeEffect.getTiming();
+      // A scroll/view-driven animation follows scroll position, not time: Play
+      // can't restart it (F2) and its duration doesn't drive playback (F3), so
+      // it's marked manualTrigger and the duration control is suppressed. Any
+      // decodable delay/easing stays editable.
+      const scrollDriven = isScrollDriven(animation);
       const params: MotionWorksRegistration["params"] = {};
-      if (typeof timing.duration === "number") {
+      if (typeof timing.duration === "number" && !scrollDriven) {
         params["duration"] = {
           type: "duration",
           var: "animation-duration",
@@ -180,6 +185,7 @@ export function startAutoDetect(intervalMs = 1500): () => void {
       const registration: MotionWorksRegistration = {
         name: displayNameFor(name, keyframeEffect),
         params,
+        ...(scrollDriven && { capabilities: { manualTrigger: true } }),
       };
       const slug = slugify(registration.name);
       const id =

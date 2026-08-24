@@ -33,6 +33,18 @@ export function bindKeyframeEffect(
   return { effect, animationName, occurrence, ...(animation && { animation }) };
 }
 
+// Scroll- and view-driven animations carry a timeline other than the document
+// timeline; their progress follows scroll position, not wall-clock time. They
+// can't be played from script (calling play() cannot advance a scroll-bound
+// timeline) and their `animation-duration` doesn't drive playback the way it
+// does for a time-based animation. Detection marks them manualTrigger and skips
+// the duration control. The check needs no ScrollTimeline/ViewTimeline globals:
+// a plain CSSAnimation's timeline is exactly `document.timeline`.
+export function isScrollDriven(animation: Animation): boolean {
+  const timeline = animation.timeline;
+  return timeline !== null && timeline !== document.timeline;
+}
+
 export function readBaseline(
   node: HTMLElement,
   key: string,

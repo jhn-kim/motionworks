@@ -25,6 +25,9 @@ class FakeCssAnimation {
   constructor(
     readonly animationName: string,
     readonly effect: FakeKeyframeEffect,
+    // Omitted → undefined, treated as the document timeline (not scroll-driven).
+    // A distinct object stands in for a ScrollTimeline/ViewTimeline.
+    readonly timeline: unknown = undefined,
   ) {}
 }
 
@@ -81,6 +84,33 @@ describe("CSS animation auto-detection", () => {
     expect(state.getAllEffects().map((effect) => effect.id)).toEqual([
       "spin#2",
     ]);
+    stop();
+  });
+
+  it("marks a scroll-driven animation manualTrigger and suppresses its duration (F2/F3)", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("CSSAnimation", FakeCssAnimation);
+    vi.stubGlobal("KeyframeEffect", FakeKeyframeEffect);
+    const state = new MotionWorksStateManager();
+    getBridge().attach(state);
+    const node = document.createElement("div");
+    document.body.appendChild(node);
+    const animation = new FakeCssAnimation(
+      "reveal",
+      new FakeKeyframeEffect(node, { duration: 300, easing: "linear" }),
+      {}, // a non-document timeline → scroll/view-driven
+    );
+    Object.defineProperty(document, "getAnimations", {
+      configurable: true,
+      value: () => [animation] as unknown as Animation[],
+    });
+
+    const stop = startAutoDetect(10);
+    const effect = state.getEffect("reveal#1");
+    expect(effect?.capabilities?.manualTrigger).toBe(true);
+    // Duration is meaningless for scroll-driven playback; easing stays editable.
+    expect(effect?.params.duration).toBeUndefined();
+    expect(effect?.params.easing).toBeDefined();
     stop();
   });
 
