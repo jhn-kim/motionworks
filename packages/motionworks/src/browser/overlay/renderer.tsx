@@ -14,6 +14,11 @@ import { getBridge } from "../bridge.js";
 import { findInteractiveNode } from "../dom-selector.js";
 import { startAutoDetect } from "./auto-detect.js";
 import { startTransitionDetect } from "./transition-detect.js";
+import {
+  buildGsapAdoptionRequest,
+  detectGsapCandidates,
+  type JsAnimationCandidate,
+} from "./js-detect.js";
 import { startDomRegistration } from "./dom-registration.js";
 import { CanvasLayer } from "./canvas-layer.js";
 import { OverlaySessionContext, useOverlaySession } from "./context.js";
@@ -372,6 +377,35 @@ export function DynamicToolbox({
   onClose,
 }: DynamicToolboxProps): React.JSX.Element {
   const session = useOverlaySession();
+
+  // JS-driven animations (GSAP) can't appear in getAnimations() and aren't
+  // editable in place; while the toolkit is open, poll for them so the surfaces
+  // panel can offer one-time adoption into CSS variables.
+  const [jsCandidates, setJsCandidates] = useState<JsAnimationCandidate[]>([]);
+  const [adopting, setAdopting] = useState(false);
+  useEffect(() => {
+    const poll = (): void => setJsCandidates(detectGsapCandidates());
+    poll();
+    const id = window.setInterval(poll, 1500);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, []);
+  const onAdoptJs = useCallback(() => {
+    const candidates = detectGsapCandidates();
+    if (candidates.length === 0) return;
+    setAdopting(true);
+    const page = window.location.pathname;
+    void Promise.allSettled(
+      candidates.map((candidate) =>
+        session.daemon.adopt(buildGsapAdoptionRequest(candidate, page)),
+      ),
+    ).finally(() => {
+      setAdopting(false);
+      setJsCandidates([]);
+    });
+  }, [session]);
+
   const agentQueue = useAgentQueue();
   const queueSignature = agentQueue.map((entry) => entry.signature).join("|");
   const queueChangeCount = agentQueue.reduce(
@@ -1061,6 +1095,11 @@ export function DynamicToolbox({
             session.selectEffect(id, node ?? undefined);
           }}
           onHover={setBrowseHover}
+          adoption={{
+            count: jsCandidates.length,
+            busy: adopting,
+            onAdopt: onAdoptJs,
+          }}
         />,
       );
     } else {

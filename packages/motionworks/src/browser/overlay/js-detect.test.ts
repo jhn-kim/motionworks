@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { detectGsapCandidates, detectLibraries } from "./js-detect.js";
+import {
+  buildGsapAdoptionRequest,
+  detectGsapCandidates,
+  detectLibraries,
+} from "./js-detect.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -57,6 +61,31 @@ describe("detectGsapCandidates", () => {
     ]);
     const candidates = detectGsapCandidates();
     expect(candidates.map((c) => c.node)).toEqual([real]);
+  });
+});
+
+describe("buildGsapAdoptionRequest", () => {
+  it("maps a candidate to duration/delay params bound to --mw-* vars", () => {
+    const node = document.createElement("div");
+    node.className = "hero";
+    document.body.append(node);
+    const req = buildGsapAdoptionRequest(
+      { library: "gsap", node, duration: 2000, delay: 500, ease: "power1.inOut" },
+      "/",
+    );
+    expect(req.library).toBe("gsap");
+    expect(req.elementSelector).toContain("hero");
+    expect(req.params.map((p) => [p.key, p.var, p.value])).toEqual([
+      ["duration", "--mw-duration", 2000],
+      ["delay", "--mw-delay", 500],
+    ]);
+  });
+
+  it("omits params GSAP didn't report", () => {
+    const node = document.createElement("div");
+    document.body.append(node);
+    const req = buildGsapAdoptionRequest({ library: "gsap", node }, "/");
+    expect(req.params).toEqual([]);
   });
 });
 

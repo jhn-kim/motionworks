@@ -10,6 +10,9 @@
 // surfaced for ADOPTION (a one-time agent lift of the tunable value into a
 // CSS custom property), after which the normal CSS path takes over.
 
+import type { AdoptionRequest } from "../../shared/index.js";
+import { describeNode } from "../dom-selector.js";
+
 export interface JsAnimationCandidate {
   library: "gsap";
   node: HTMLElement;
@@ -94,6 +97,42 @@ export function detectGsapCandidates(): JsAnimationCandidate[] {
     }
   }
   return candidates;
+}
+
+// Map a GSAP candidate to an adoption request: the tunable timing values the
+// agent should lift into CSS custom properties. GSAP eases are library-specific
+// strings ("power1.inOut"), not cubic-beziers, so ease is left for the agent to
+// translate rather than proposed as an editable easing-curve param.
+export function buildGsapAdoptionRequest(
+  candidate: JsAnimationCandidate,
+  page: string,
+): AdoptionRequest {
+  const params: AdoptionRequest["params"] = [];
+  if (candidate.duration !== undefined)
+    params.push({
+      key: "duration",
+      type: "duration",
+      value: candidate.duration,
+      var: "--mw-duration",
+      label: "Duration",
+      unit: "ms",
+    });
+  if (candidate.delay !== undefined)
+    params.push({
+      key: "delay",
+      type: "duration",
+      value: candidate.delay,
+      var: "--mw-delay",
+      label: "Delay",
+      unit: "ms",
+    });
+  return {
+    library: "gsap",
+    page,
+    effectName: "GSAP animation",
+    elementSelector: describeNode(candidate.node),
+    params,
+  };
 }
 
 // Best-effort library presence. GSAP is reliable (global registry). Framer

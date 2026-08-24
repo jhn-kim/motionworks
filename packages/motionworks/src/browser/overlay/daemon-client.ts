@@ -1,4 +1,5 @@
 import type {
+  AdoptionRequest,
   CommitRequest,
   JournalEntry,
   SelectRequest,
@@ -129,6 +130,13 @@ export class DaemonClient {
     const ok = (await this.post("/ack", { id })) !== null;
     if (ok) await this.pollPending(true);
     return ok;
+  }
+
+  async adopt(req: AdoptionRequest): Promise<{ id: string } | null> {
+    const entry = await this.post("/adopt", req);
+    if (entry === null || typeof (entry as { id?: unknown }).id !== "string")
+      return null;
+    return { id: (entry as { id: string }).id };
   }
 
   // ── Polling ───────────────────────────────────────────────────────────

@@ -264,9 +264,13 @@ export function LayersPanel({
 export function ElementsPanel({
   onJump,
   onHover,
+  adoption,
 }: {
   onJump: (effectId: string, node: HTMLElement | null) => void;
   onHover: (info: { node: HTMLElement; label: string } | null) => void;
+  // JS-driven animations (GSAP) MotionWorks can detect but not edit directly,
+  // offered for one-time adoption into CSS variables.
+  adoption?: { count: number; busy: boolean; onAdopt: () => void };
 }): React.JSX.Element {
   const state = useSessionState();
   const bridge = getBridge();
@@ -293,14 +297,46 @@ export function ElementsPanel({
       : 1;
   });
 
+  const adoptionNote =
+    adoption !== undefined && adoption.count > 0 ? (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <span style={hintStyle}>
+          {adoption.count} JS-driven animation
+          {adoption.count === 1 ? "" : "s"} (GSAP) can&rsquo;t be edited
+          directly. Adopt to lift the values into CSS variables.
+        </span>
+        <button
+          type="button"
+          disabled={adoption.busy}
+          onClick={adoption.onAdopt}
+          style={{
+            alignSelf: "flex-start",
+            font: "inherit",
+            fontSize: 11,
+            padding: "4px 10px",
+            borderRadius: 6,
+            border: "1px solid rgba(255,255,255,0.25)",
+            background: "rgba(255,255,255,0.08)",
+            color: "rgba(255,255,255,0.9)",
+            cursor: adoption.busy ? "default" : "pointer",
+            opacity: adoption.busy ? 0.5 : 1,
+          }}
+        >
+          {adoption.busy ? "Queuing…" : "Adopt to edit"}
+        </button>
+      </div>
+    ) : null;
+
   return (
     <div style={sectionStyle}>
       <span style={headerStyle}>Animated surfaces</span>
       {entries.length === 0 ? (
-        <span style={hintStyle}>
-          Nothing registered yet. Ask your coding agent to add a motion effect —
-          it will appear here, ready to refine.
-        </span>
+        adoptionNote ?? (
+          <span style={hintStyle}>
+            Nothing registered yet. Ask your coding agent to add a motion effect
+            — it will appear here, ready to refine.
+          </span>
+        )
       ) : (
         <>
           <MagnifyList>
@@ -349,6 +385,7 @@ export function ElementsPanel({
               );
             })}
           </MagnifyList>
+          {adoptionNote}
         </>
       )}
     </div>
