@@ -76,6 +76,14 @@ describe("CSS write", () => {
     expect(findDeclarations(src, "animation-delay")).toHaveLength(0);
   });
 
+  it("ignores a time-like token inside a comment in the shorthand", () => {
+    const src = ".a { animation: spin 2s /* was 1s */ linear; }";
+    const decls = findDeclarations(src, "animation-duration");
+    expect(decls).toHaveLength(1);
+    // the real duration (2s), not the "1s" buried in the comment
+    expect(src.slice(decls[0]!.start, decls[0]!.end)).toBe("2s");
+  });
+
   it("auto-applies a duration edit written in the animation shorthand", async () => {
     const file = join(root, "a.css");
     await writeFile(

@@ -221,44 +221,49 @@ const EASING_KEYWORD = new Set([
   "step-end",
 ]);
 
-// Split a shorthand value into whitespace-separated top-level tokens (keeping
-// their absolute source offsets), respecting parens so cubic-bezier(...)/steps()
-// stay whole. A top-level comma means a multi-value shorthand (several
+// Split a shorthand value into whitespace-separated top-level token SPANS
+// (absolute offsets), respecting parens so cubic-bezier(...)/steps() stay whole.
+// Runs over the MASKED value, so a comment/string inside the shorthand (which
+// masking has turned into whitespace) yields no tokens and can't be mistaken for
+// a real value. A top-level comma means a multi-value shorthand (several
 // animations/properties) whose sub-values can't be disambiguated safely, so that
 // is reported as no match and left to agent handoff.
-function topLevelTokens(
-  value: string,
+function topLevelSpans(
+  maskedValue: string,
   base: number,
-): { text: string; start: number; end: number }[] | null {
-  const tokens: { text: string; start: number; end: number }[] = [];
+): { start: number; end: number }[] | null {
+  const spans: { start: number; end: number }[] = [];
   let depth = 0;
   let tokenStart = -1;
-  for (let i = 0; i <= value.length; i++) {
-    const ch = i < value.length ? value[i] : undefined;
+  for (let i = 0; i <= maskedValue.length; i++) {
+    const ch = i < maskedValue.length ? maskedValue[i] : undefined;
     if (ch === "(") depth++;
     else if (ch === ")") depth--;
     else if (ch === "," && depth === 0) return null;
     const isBoundary = ch === undefined || (depth === 0 && /\s/.test(ch));
     if (isBoundary) {
       if (tokenStart !== -1) {
-        tokens.push({
-          text: value.slice(tokenStart, i),
-          start: base + tokenStart,
-          end: base + i,
-        });
+        spans.push({ start: base + tokenStart, end: base + i });
         tokenStart = -1;
       }
     } else if (tokenStart === -1) tokenStart = i;
   }
-  return tokens;
+  return spans;
 }
 
 function shorthandTokenMatch(
+  masked: string,
+  source: string,
   decl: DeclarationMatch,
   role: "duration" | "delay" | "easing",
 ): DeclarationMatch | null {
-  const tokens = topLevelTokens(decl.value, decl.start);
-  if (tokens === null) return null;
+  const spans = topLevelSpans(masked.slice(decl.start, decl.end), decl.start);
+  if (spans === null) return null;
+  const tokens = spans.map((s) => ({
+    start: s.start,
+    end: s.end,
+    text: source.slice(s.start, s.end),
+  }));
   let target: { text: string; start: number; end: number } | undefined;
   if (role === "easing") {
     target = tokens.find(
@@ -292,7 +297,7 @@ export function findDeclarations(
   const shorthand = SHORTHAND_TIMING[varName];
   if (shorthand !== undefined)
     for (const decl of rawDeclarations(source, masked, shorthand.shorthand)) {
-      const token = shorthandTokenMatch(decl, shorthand.role);
+      const token = shorthandTokenMatch(masked, source, decl, shorthand.role);
       if (token !== null) matches.push(token);
     }
   return matches;
