@@ -38,7 +38,9 @@ describe("css bindings", () => {
     const el = document.createElement("div");
     document.body.append(el);
     // Missing variable → fallback.
-    expect(readMotionVar(el, "--mw-duration", 0.6, { seconds: true })).toBe(0.6);
+    expect(readMotionVar(el, "--mw-duration", 0.6, { seconds: true })).toBe(
+      0.6,
+    );
 
     el.style.setProperty("--mw-duration", "600ms");
     // Default unit is milliseconds (MotionWorks' internal unit)…

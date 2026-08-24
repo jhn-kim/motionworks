@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type RefObject,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import type { MotionWorksRegistration } from "../shared/index.js";
 
