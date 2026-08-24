@@ -50,3 +50,6 @@ examples/
 motionworks-review.md
 design/
 autoresearch/
+
+# packed tarballs (local testing)
+*.tgz
