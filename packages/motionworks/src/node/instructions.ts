@@ -241,8 +241,9 @@ function Hero() {
 
 1. Declare each \`--mw-*\` variable on the element's CSS rule at the current value.
 2. Replace the hardcoded value with \`useMotionVar(ref, '--mw-var', <current value>, opts)\`, whose fallback is the original literal — so if the variable is ever absent the animation is unchanged. Register the element with \`useMotionWorks\`.
-3. Change nothing else and do not alter behavior. Make it one reviewable change per animation.
-4. For a queued adoption, run \`npx motionworks adopt-ack <id>\`.
+3. If the animation can be re-run (a react-spring \`useSpring\`, a GSAP tween, a one-shot entrance), declare \`capabilities: { replay: true }\` in the schema and listen for the \`motionworks:replay\` event on the element to restart it (e.g. \`api.start({ from, to })\` for react-spring, \`tween.restart()\` for GSAP). Without this the toolkit's Play button can't preview a JS-driven animation.
+4. Change nothing else and do not alter behavior. Make it one reviewable change per animation.
+5. For a queued adoption, run \`npx motionworks adopt-ack <id>\`.
 
 After adoption the effect is refined like any other. \`useMotionVar\` does the SSR-safe, unit-correct, live-updating read for you — do not hand-roll \`getComputedStyle\`.
 

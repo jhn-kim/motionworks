@@ -706,7 +706,7 @@ export function DynamicToolbox({
       result.push({
         id: "replay",
         label: "Play animation",
-        hint: "trigger it manually",
+        hint: "Trigger it yourself to preview",
         kind: "verb",
         icon: ICONS.replay,
         inert: true,
