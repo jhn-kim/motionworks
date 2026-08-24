@@ -59,6 +59,10 @@ afterEach(() => {
   session.stop();
   node.remove();
   vi.unstubAllGlobals();
+  // stop() flushed the debounced diff into localStorage; wipe it so a prior
+  // test's manipulation doesn't hydrate into the next session (P2-7 leak that
+  // only surfaces on slower timer scheduling, e.g. CI's Node 20).
+  localStorage.clear();
   sessionStorage.clear();
 });
 
