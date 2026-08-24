@@ -42,6 +42,41 @@ export type CommitRequest = Omit<
   | "error"
 >;
 
+/**
+ * Adoption journal (`.motionworks/adoptions.json`). Distinct from the value
+ * journal: an adoption is a one-time request for the coding agent to LIFT a
+ * JS-driven animation's tunable value (GSAP/Framer Motion/react-spring/custom)
+ * into a CSS custom property the effect reads, then attach a MotionWorks schema.
+ * After that the effect flows through the normal CSS path and never needs
+ * adoption again.
+ */
+export interface AdoptionParam {
+  key: string; // e.g. "duration"
+  type: ParameterType;
+  value: unknown; // current runtime value (ms for durations)
+  var: string; // proposed --mw-* custom property to bind to
+  label: string;
+  unit?: string;
+}
+
+export interface AdoptionRequest {
+  library: "gsap" | "framer-motion" | "react-spring" | "custom";
+  page: string;
+  effectName: string;
+  elementSelector: string;
+  params: AdoptionParam[];
+}
+
+export interface AdoptionEntry extends AdoptionRequest {
+  id: string;
+  createdAt: number;
+  origin: string;
+  status: JournalStatus;
+  appliedAt?: number;
+  appliedBy?: "agent" | "cli";
+  error?: string;
+}
+
 export interface SelectRequest {
   effectId: string;
   effectName: string;

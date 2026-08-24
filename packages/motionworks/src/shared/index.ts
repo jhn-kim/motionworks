@@ -21,6 +21,9 @@ export {
   parseEasing,
 } from "./css-values.js";
 export type {
+  AdoptionEntry,
+  AdoptionParam,
+  AdoptionRequest,
   CommitRequest,
   JournalChange,
   JournalEntry,
