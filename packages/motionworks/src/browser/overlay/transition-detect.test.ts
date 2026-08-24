@@ -64,7 +64,9 @@ describe("CSS transition auto-detection", () => {
       "transition-delay": "0s",
       "transition-timing-function": "ease",
     };
-    mount(node, [new FakeCssTransition("opacity", new FakeKeyframeEffect(node))]);
+    mount(node, [
+      new FakeCssTransition("opacity", new FakeKeyframeEffect(node)),
+    ]);
 
     const stop = startTransitionDetect(10);
     const effect = state.getEffect("opacity#1");
@@ -110,7 +112,9 @@ describe("CSS transition auto-detection", () => {
       "transition-delay": "0s",
       "transition-timing-function": "ease",
     };
-    mount(node, [new FakeCssTransition("opacity", new FakeKeyframeEffect(node))]);
+    mount(node, [
+      new FakeCssTransition("opacity", new FakeKeyframeEffect(node)),
+    ]);
 
     const stop = startTransitionDetect(10);
     expect(state.getAllEffects()).toHaveLength(1);

@@ -156,7 +156,8 @@ describe("agent", () => {
 
   it("surfaces bounded child stderr in the failure error (S2)", async () => {
     const process = child();
-    (process as unknown as { stderr: EventEmitter }).stderr = new EventEmitter();
+    (process as unknown as { stderr: EventEmitter }).stderr =
+      new EventEmitter();
     const runner = createAgentRunner({
       command: "claude",
       projectRoot: "/project",

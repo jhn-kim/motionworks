@@ -81,7 +81,8 @@ export function detectGsapCandidates(): JsAnimationCandidate[] {
       typeof tween.duration === "function" ? tween.duration() : undefined,
     );
     const delay = toMs(tween.vars?.delay);
-    const ease = typeof tween.vars?.ease === "string" ? tween.vars.ease : undefined;
+    const ease =
+      typeof tween.vars?.ease === "string" ? tween.vars.ease : undefined;
     for (const target of targets) {
       if (!(target instanceof HTMLElement)) continue;
       if (seen.has(target)) continue;

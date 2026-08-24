@@ -242,7 +242,6 @@ const rangeInputStyle: React.CSSProperties = {
   margin: 0,
 };
 
-
 interface GradientStop {
   stop: number;
   color: string;

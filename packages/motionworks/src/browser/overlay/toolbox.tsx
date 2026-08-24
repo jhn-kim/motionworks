@@ -951,7 +951,13 @@ export const ICONS = {
   familyStyle: (
     <svg {...iconProps} aria-hidden>
       <defs>
-        <linearGradient id="motionworks-family-grad-mw7" x1="0" x2="1" y1="0" y2="0">
+        <linearGradient
+          id="motionworks-family-grad-mw7"
+          x1="0"
+          x2="1"
+          y1="0"
+          y2="0"
+        >
           <stop offset="0" stopColor="currentColor" stopOpacity="0.15" />
           <stop offset="0.5" stopColor="currentColor" stopOpacity="0.55" />
           <stop offset="1" stopColor="currentColor" />

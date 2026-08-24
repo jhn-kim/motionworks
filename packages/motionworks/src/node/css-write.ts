@@ -204,7 +204,9 @@ export function findDeclarations(
  */
 function endsWithPathSuffix(file: string, suffix: string): boolean {
   const normalizedFile = file.replace(/\\/g, "/");
-  const normalizedSuffix = suffix.replace(/\\/g, "/").replace(/^(?:\.?\/)+/, "");
+  const normalizedSuffix = suffix
+    .replace(/\\/g, "/")
+    .replace(/^(?:\.?\/)+/, "");
   return (
     normalizedFile === normalizedSuffix ||
     normalizedFile.endsWith(`/${normalizedSuffix}`)

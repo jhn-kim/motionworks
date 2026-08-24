@@ -196,7 +196,11 @@ describe("CSS write", () => {
     const result = await applyCssChanges(
       root,
       entry({
-        rule: { sourceFile: "motion.css", selectorText: ".card", sheetHref: "" },
+        rule: {
+          sourceFile: "motion.css",
+          selectorText: ".card",
+          sheetHref: "",
+        },
       }),
     );
     // The unanchored endsWith would have matched evil-motion.css too and made

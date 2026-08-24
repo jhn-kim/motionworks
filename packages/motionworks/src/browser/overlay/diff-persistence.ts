@@ -3,7 +3,10 @@ import type { DiffStoreData } from "./diff-store.js";
 const KEY_PREFIX = "motionworks:diffs:";
 const DEBOUNCE_MS = 100;
 
-const timers = new Map<string, { timer: ReturnType<typeof setTimeout>; write: () => void }>();
+const timers = new Map<
+  string,
+  { timer: ReturnType<typeof setTimeout>; write: () => void }
+>();
 
 function keyFor(scope: string): string {
   return `${KEY_PREFIX}${scope}`;

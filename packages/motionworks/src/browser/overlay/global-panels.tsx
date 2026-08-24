@@ -331,12 +331,12 @@ export function ElementsPanel({
     <div style={sectionStyle}>
       <span style={headerStyle}>Animated surfaces</span>
       {entries.length === 0 ? (
-        adoptionNote ?? (
+        (adoptionNote ?? (
           <span style={hintStyle}>
             Nothing registered yet. Ask your coding agent to add a motion effect
             — it will appear here, ready to refine.
           </span>
-        )
+        ))
       ) : (
         <>
           <MagnifyList>

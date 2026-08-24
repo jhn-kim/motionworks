@@ -28,7 +28,11 @@ describe("detectGsapCandidates", () => {
     const b = document.createElement("div");
     document.body.append(a, b);
     stubGsap([
-      { targets: () => [a], duration: () => 2, vars: { ease: "power1.inOut", delay: 0.5 } },
+      {
+        targets: () => [a],
+        duration: () => 2,
+        vars: { ease: "power1.inOut", delay: 0.5 },
+      },
       { targets: () => [a, b], duration: () => 1, vars: {} }, // `a` already seen
     ]);
 
@@ -41,7 +45,11 @@ describe("detectGsapCandidates", () => {
       delay: 500,
       ease: "power1.inOut",
     });
-    expect(candidates[1]).toMatchObject({ library: "gsap", node: b, duration: 1000 });
+    expect(candidates[1]).toMatchObject({
+      library: "gsap",
+      node: b,
+      duration: 1000,
+    });
   });
 
   it("skips non-element targets and overlay nodes, and survives throwing tweens", () => {
@@ -70,7 +78,13 @@ describe("buildGsapAdoptionRequest", () => {
     node.className = "hero";
     document.body.append(node);
     const req = buildGsapAdoptionRequest(
-      { library: "gsap", node, duration: 2000, delay: 500, ease: "power1.inOut" },
+      {
+        library: "gsap",
+        node,
+        duration: 2000,
+        delay: 500,
+        ease: "power1.inOut",
+      },
       "/",
     );
     expect(req.library).toBe("gsap");

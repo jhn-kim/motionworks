@@ -22,7 +22,11 @@ async function atomicWrite(path: string, value: unknown): Promise<void> {
   await rename(temp, path);
 }
 
-const STATUSES = new Set<JournalStatus>(["pending", "agent-working", "applied"]);
+const STATUSES = new Set<JournalStatus>([
+  "pending",
+  "agent-working",
+  "applied",
+]);
 
 function isAdoptionEntry(value: unknown): value is AdoptionEntry {
   return (

@@ -123,9 +123,7 @@ export async function pendingChanges(root: string): Promise<JournalEntry[]> {
   );
 }
 
-export async function pendingAdoptions(
-  root: string,
-): Promise<AdoptionEntry[]> {
+export async function pendingAdoptions(root: string): Promise<AdoptionEntry[]> {
   return (await readAdoptions(root)).filter(
     (entry) => entry.status !== "applied",
   );

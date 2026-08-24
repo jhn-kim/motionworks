@@ -113,8 +113,7 @@ async function main(): Promise<void> {
     );
   if (command === "adopt-ack") {
     const id = args[1];
-    if (id === undefined)
-      throw new Error("Usage: motionworks adopt-ack <id>");
+    if (id === undefined) throw new Error("Usage: motionworks adopt-ack <id>");
     const acked = await runAdoptAck(process.cwd(), id);
     process.stdout.write(`Adopted ${acked.effectName} (${acked.id}).\n`);
     return;

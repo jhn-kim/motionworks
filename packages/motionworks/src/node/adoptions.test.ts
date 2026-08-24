@@ -24,7 +24,14 @@ const entry = (id: string): AdoptionEntry => ({
   effectName: "Hero drift",
   elementSelector: ".hero",
   params: [
-    { key: "duration", type: "duration", value: 2000, var: "--mw-duration", label: "Duration", unit: "ms" },
+    {
+      key: "duration",
+      type: "duration",
+      value: 2000,
+      var: "--mw-duration",
+      label: "Duration",
+      unit: "ms",
+    },
   ],
 });
 
@@ -53,7 +60,9 @@ describe("adoption journal", () => {
       appliedBy: "agent",
     });
     expect(updated?.status).toBe("applied");
-    expect(await updateAdoption(root, "missing", { status: "applied" })).toBeNull();
+    expect(
+      await updateAdoption(root, "missing", { status: "applied" }),
+    ).toBeNull();
   });
 
   it("removes an entry and reports whether one was removed", async () => {
