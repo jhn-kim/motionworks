@@ -43,7 +43,6 @@ export class OverlaySession {
   readonly typeOverrides = new TypeOverrideStore();
   readonly daemon: DaemonClient;
   private readonly bridge: Bridge;
-  private readonly origin: string;
   // localStorage scope for uncommitted diffs: origin + pathname, so per-page
   // effect ids don't collide across routes (P2-7).
   private readonly diffScope: string;
@@ -71,7 +70,6 @@ export class OverlaySession {
 
   constructor({ daemonUrl, debug = false }: OverlaySessionOptions) {
     this.bridge = getBridge();
-    this.origin = typeof location === "undefined" ? "" : location.origin;
     this.diffScope =
       typeof location === "undefined"
         ? ""

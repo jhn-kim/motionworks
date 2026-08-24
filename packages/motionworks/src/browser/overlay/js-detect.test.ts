@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  buildGsapAdoptionRequest,
-  detectGsapCandidates,
-  detectLibraries,
-} from "./js-detect.js";
+import { buildGsapAdoptionRequest, detectGsapCandidates } from "./js-detect.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -117,13 +113,5 @@ describe("buildGsapAdoptionRequest", () => {
     document.body.append(node);
     const req = buildGsapAdoptionRequest({ library: "gsap", node }, "/");
     expect(req.params).toEqual([]);
-  });
-});
-
-describe("detectLibraries", () => {
-  it("reports GSAP presence via its global timeline", () => {
-    expect(detectLibraries().gsap).toBe(false);
-    stubGsap([]);
-    expect(detectLibraries().gsap).toBe(true);
   });
 });

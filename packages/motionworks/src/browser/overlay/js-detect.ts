@@ -21,12 +21,6 @@ export interface JsAnimationCandidate {
   ease?: string;
 }
 
-export interface JsLibraryPresence {
-  gsap: boolean;
-  framerMotion: boolean;
-  reactSpring: boolean;
-}
-
 interface GsapTween {
   targets?: () => unknown[];
   duration?: () => number;
@@ -135,20 +129,5 @@ export function buildGsapAdoptionRequest(
     effectName: "GSAP animation",
     elementSelector: describeNode(candidate.node),
     params,
-  };
-}
-
-// Best-effort library presence. GSAP is reliable (global registry). Framer
-// Motion and react-spring expose no stable global, so presence can only be
-// inferred weakly; absence here does NOT mean the library is unused.
-export function detectLibraries(): JsLibraryPresence {
-  const w = window as unknown as Record<string, unknown>;
-  return {
-    gsap: gsapGlobal()?.globalTimeline?.getChildren !== undefined,
-    // Framer Motion / Motion attach no canonical global; these markers appear in
-    // some builds/devtools integrations but are not guaranteed.
-    framerMotion:
-      "__FRAMER_MOTION_DEV_TOOLS__" in w || "MotionGlobalConfig" in w,
-    reactSpring: "__REACT_SPRING_GLOBALS__" in w,
   };
 }

@@ -11,7 +11,6 @@ import type {
   AdoptionRequest,
   CommitRequest,
   JournalChange,
-  JournalEntry,
   SelectRequest,
   StatusResponse,
 } from "../shared/index.js";
@@ -446,6 +445,16 @@ export async function startDaemon(
         const value = await body(req);
         if (!isAdoptionRequest(value))
           return sendJson(res, 400, { error: "Invalid adoption request" });
+        // Dedup: re-clicking Adopt (or re-detecting the same element before the
+        // agent has lifted it) must not pile up duplicate entries for the same
+        // element/page. Return the existing pending one instead.
+        const existing = (await readAdoptions(options.projectRoot)).find(
+          (candidate) =>
+            candidate.status !== "applied" &&
+            candidate.elementSelector === value.elementSelector &&
+            candidate.page === value.page,
+        );
+        if (existing !== undefined) return sendJson(res, 200, existing);
         const entry: AdoptionEntry = {
           ...value,
           id: randomUUID(),

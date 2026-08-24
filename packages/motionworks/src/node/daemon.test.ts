@@ -78,6 +78,19 @@ describe("daemon", () => {
     expect(listed.adoptions).toHaveLength(1);
     expect(listed.adoptions[0]!.library).toBe("gsap");
 
+    // Re-posting the same element/page dedups (200, existing entry, no pile-up).
+    const dup = await request("/adopt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(adoption),
+    });
+    expect(dup.status).toBe(200);
+    expect(((await dup.json()) as { id: string }).id).toBe(entry.id);
+    expect(
+      ((await (await request("/adoptions")).json()) as { adoptions: unknown[] })
+        .adoptions,
+    ).toHaveLength(1);
+
     expect(
       (
         await request("/adopt", {

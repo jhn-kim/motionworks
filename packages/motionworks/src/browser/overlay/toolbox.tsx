@@ -687,6 +687,7 @@ function ToolButton({
       type="button"
       aria-label={tool.label}
       aria-pressed={active}
+      aria-disabled={dimmed || undefined}
       onClick={
         tool.onHoldStart !== undefined || inert
           ? undefined

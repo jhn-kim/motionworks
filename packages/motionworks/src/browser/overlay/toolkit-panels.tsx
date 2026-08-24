@@ -4,15 +4,9 @@ import type { MotionWorksParam, ParameterType } from "../../shared/index.js";
 
 import { ColorSwatch } from "./color-picker.js";
 import { useOverlaySession } from "./context.js";
-import {
-  curveForType,
-  formatReal,
-  formatScale,
-  valueToScale,
-} from "./scale.js";
 import { translateAnchor } from "./surfaces/path.js";
 import { SurfaceContextMenu } from "./surfaces/shared/context-menu.js";
-import { COLORS, FONT, GLASS, SPRING_SURFACE } from "./theme.js";
+import { COLORS, FONT, GLASS } from "./theme.js";
 
 // One parameter as the toolkit panel sees it: the schema param plus the
 // live (possibly manipulated, uncommitted) value.
@@ -130,7 +124,6 @@ export function ToolkitTypePanel({
           type={type}
           effectId={effectId}
           entry={entry}
-          siblingCount={entries.length}
         />
       ))}
     </div>
@@ -141,12 +134,10 @@ function PanelParam({
   type,
   effectId,
   entry,
-  siblingCount,
 }: {
   type: ParameterType;
   effectId: string;
   entry: PanelParamEntry;
-  siblingCount: number;
 }): React.JSX.Element | null {
   // Only the on-canvas / non-scalar editors reach this panel (gradient,
   // easing curve, path). Numeric and spring params are edited in the family
