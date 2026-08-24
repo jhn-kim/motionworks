@@ -1,10 +1,24 @@
 // @vitest-environment jsdom
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { createRef, useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MotionWorksStateManager } from "../shared/state.js";
 import { getBridge } from "./bridge.js";
-import { useMotionWorks } from "./hook.js";
+import { useMotionVar, useMotionWorks } from "./hook.js";
+
+function VarFixture(): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  const duration = useMotionVar(ref, "--mw-duration", 0.6, { seconds: true });
+  return (
+    <div
+      ref={ref}
+      data-testid="dur"
+      style={{ "--mw-duration": "600ms" } as React.CSSProperties}
+    >
+      {duration}
+    </div>
+  );
+}
 
 function Fixture(): React.JSX.Element {
   const ref = createRef<HTMLDivElement>();
@@ -113,5 +127,23 @@ describe("useMotionWorks", () => {
     expect(state.getAllEffects()[0]?.params.radius).not.toHaveProperty("min");
     view.unmount();
     warn.mockRestore();
+  });
+
+  it("useMotionVar reads the var in seconds and re-renders on change", () => {
+    const { getByTestId } = render(<VarFixture />);
+    const el = getByTestId("dur");
+    // 600ms → 0.6s (fallback and var agree, so behavior is unchanged at rest).
+    expect(el.textContent).toBe("0.6");
+    // A MotionWorks edit sets the inline var and dispatches the change event.
+    el.style.setProperty("--mw-duration", "300ms");
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent("motionworks:change", {
+          bubbles: true,
+          detail: { param: "duration", value: 300 },
+        }),
+      );
+    });
+    expect(el.textContent).toBe("0.3");
   });
 });

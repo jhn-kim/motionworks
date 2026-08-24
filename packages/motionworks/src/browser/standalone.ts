@@ -7,6 +7,7 @@ import {
   onParamsChange,
   readParam,
   readParams,
+  readMotionVar,
   varNameFor,
 } from "./css-bindings.js";
 import { OverlayRenderer } from "./overlay/renderer.js";
@@ -34,6 +35,7 @@ export {
   onParamsChange,
   readParam,
   readParams,
+  readMotionVar,
   varNameFor,
 };
 
@@ -44,6 +46,7 @@ const api = {
   onParamsChange,
   readParam,
   readParams,
+  readMotionVar,
   varNameFor,
 };
 Object.assign(window as typeof window & { MotionWorks?: typeof api }, {

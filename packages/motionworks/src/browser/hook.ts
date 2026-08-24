@@ -1,8 +1,15 @@
-import { useEffect, useMemo, useRef, type RefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import type { MotionWorksRegistration } from "../shared/index.js";
 
 import { getBridge } from "./bridge.js";
+import { onParamsChange, readMotionVar } from "./css-bindings.js";
 import { allocateEffectId, slugify } from "./ids.js";
 
 const IS_DEV = process.env.NODE_ENV === "development";
@@ -109,4 +116,35 @@ export function useMotionWorks<T extends Element>(
     },
     [],
   );
+}
+
+/**
+ * Bridges a JS-driven animation (Framer Motion, react-spring, custom) to a
+ * MotionWorks-owned CSS variable so it can be refined live. Returns `fallback`
+ * on the server and until the ref is attached (SSR- and hydration-safe), then
+ * the variable's value; re-reads on the `motionworks:change` event and
+ * re-renders so a slider drag is reflected immediately. Pass `{ seconds: true }`
+ * for Framer's second-based `duration`/`delay`.
+ *
+ * Register the same element with `useMotionWorks` and initialize the variable to
+ * the animation's current value; the fallback keeps behavior identical until the
+ * designer changes it.
+ */
+export function useMotionVar<T extends Element>(
+  ref: RefObject<T | null>,
+  name: string,
+  fallback: number,
+  opts?: { seconds?: boolean },
+): number {
+  const seconds = opts?.seconds === true;
+  const [value, setValue] = useState(fallback);
+  useEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    const read = (): void =>
+      setValue(readMotionVar(el, name, fallback, { seconds }));
+    read();
+    return onParamsChange(el, read);
+  }, [ref, name, fallback, seconds]);
+  return value;
 }

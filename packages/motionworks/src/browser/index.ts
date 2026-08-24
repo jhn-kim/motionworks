@@ -4,5 +4,6 @@ export {
   onParamsChange,
   readParam,
   readParams,
+  readMotionVar,
   varNameFor,
 } from "./css-bindings.js";

@@ -39,6 +39,35 @@ export function readParams(
   );
 }
 
+/**
+ * SSR- and mount-safe reader for a single MotionWorks CSS variable, for wiring
+ * JS-driven motion (Framer Motion, react-spring, custom) to a MotionWorks-owned
+ * value. Returns `fallback` when there is no element yet (null ref, first
+ * render) or no browser (server) — so the animation keeps its original value and
+ * hydration never mismatches — and only returns the variable's value once it is
+ * both present and decodable.
+ *
+ * Unit is explicit: MotionWorks stores durations in milliseconds. Pass
+ * `{ seconds: true }` for consumers that want seconds (Framer's `duration`),
+ * which prevents a silent 1000x error. Non-time variables are returned as a
+ * plain number.
+ */
+export function readMotionVar(
+  el: Element | null,
+  name: string,
+  fallback: number,
+  opts?: { seconds?: boolean },
+): number {
+  if (el === null || typeof window === "undefined") return fallback;
+  const raw = getComputedStyle(el).getPropertyValue(name).trim();
+  if (raw === "") return fallback;
+  const decoded = decodeCssValue("duration", raw);
+  if (decoded !== null && typeof decoded.value === "number")
+    return opts?.seconds === true ? decoded.value / 1000 : decoded.value;
+  const numeric = Number.parseFloat(raw);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
 export function onParamsChange(
   el: Element,
   cb: (params: Record<string, unknown>, event: CustomEvent) => void,
