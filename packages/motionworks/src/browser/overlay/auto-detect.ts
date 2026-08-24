@@ -238,10 +238,17 @@ export function startAutoDetect(intervalMs = 1500): () => void {
     }
   };
 
+  // Catch entrance one-shots the instant they start — including ones that would
+  // finish before the toolkit is opened and drop out of getAnimations(). The
+  // retention above then keeps them selectable. Runs from provider mount, so the
+  // listener is already armed when load-time animations fire.
+  const onAnimationStart = (): void => scan();
+  document.addEventListener("animationstart", onAnimationStart, true);
   scan();
   const interval = window.setInterval(scan, intervalMs);
   return () => {
     window.clearInterval(interval);
+    document.removeEventListener("animationstart", onAnimationStart, true);
     for (const entry of registered.values()) {
       bridge.unregister(entry.id, entry.node);
     }

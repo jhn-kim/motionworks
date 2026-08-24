@@ -114,6 +114,37 @@ describe("CSS animation auto-detection", () => {
     stop();
   });
 
+  it("registers an entrance animation immediately on animationstart (F6)", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("CSSAnimation", FakeCssAnimation);
+    vi.stubGlobal("KeyframeEffect", FakeKeyframeEffect);
+    const state = new MotionWorksStateManager();
+    getBridge().attach(state);
+    const node = document.createElement("div");
+    document.body.appendChild(node);
+    let animations: Animation[] = [];
+    Object.defineProperty(document, "getAnimations", {
+      configurable: true,
+      value: () => animations,
+    });
+
+    // Very long poll interval: only the animationstart event can trigger a scan.
+    const stop = startAutoDetect(1_000_000);
+    expect(state.getAllEffects()).toHaveLength(0);
+
+    // An entrance one-shot begins after mount.
+    animations = [
+      new FakeCssAnimation(
+        "fadeUp",
+        new FakeKeyframeEffect(node, { duration: 600, easing: "ease" }),
+      ),
+    ] as unknown as Animation[];
+    document.dispatchEvent(new Event("animationstart"));
+
+    expect(state.getEffect("fadeup#1")).toBeDefined();
+    stop();
+  });
+
   it("keeps a finished one-shot registered while its element stays in the DOM (P2-9)", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("CSSAnimation", FakeCssAnimation);

@@ -174,17 +174,16 @@ function OverlayShell(): React.JSX.Element {
   // when the toolkit reopens.
   useEffect(() => startDomRegistration(), []);
 
-  // While the overlay is active, otherwise-unregistered CSS keyframe
-  // animations and transitions are auto-registered as selectable effects
-  // (see auto-detect.ts / transition-detect.ts).
+  // CSS keyframe animations are auto-registered from provider mount (not only
+  // while the toolkit is open) so entrance one-shots that fire on load — and
+  // finish before the designer opens the toolkit — are still captured (F6).
+  useEffect(() => startAutoDetect(), []);
+
+  // Transitions are interaction-time motion (hover, class toggles); detect them
+  // only while the toolkit is open (see transition-detect.ts).
   useEffect(() => {
     if (!active) return;
-    const stopAnimations = startAutoDetect();
-    const stopTransitions = startTransitionDetect();
-    return () => {
-      stopAnimations();
-      stopTransitions();
-    };
+    return startTransitionDetect();
   }, [active]);
 
   useEffect(() => {
