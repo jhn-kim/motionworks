@@ -269,7 +269,9 @@ describe("runInit — per-project port", () => {
 
     const guide = await readFile(join(cwd, GUIDE_FILE), "utf8");
     expect(guide).toContain(`http://127.0.0.1:${String(port)}/motionworks.js`);
-    expect(guide).toContain(`<MotionWorksProvider port={${String(port)}} />`);
+    // The React mount now builds a tokened daemonUrl from the pinned port.
+    expect(guide).toContain(`'http://127.0.0.1:${String(port)}'`);
+    expect(guide).toContain("<MotionWorksProvider daemonUrl={daemonUrl} />");
   });
 
   it("is idempotent: a same-version rerun keeps the pinned port and guide", async () => {

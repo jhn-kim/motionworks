@@ -30,7 +30,20 @@ Start `npx motionworks` from the project root alongside the application's develo
 
 Mount `MotionWorksProvider` in its own development-only React root. The independent root keeps the overlay alive when application HMR remounts the product tree.
 
-Next.js App Router projects must mount from a client boot component rather than rendering the provider directly in a Server Component:
+The daemon is token-authenticated by default, and the browser cannot read `.motionworks/token`. The mount must therefore pass the token in `daemonUrl` — passing only `port` sends no token, so every `/status` poll is rejected (401) and the overlay silently never connects. A development-only route exposes the token to the page:
+
+```ts
+// app/api/motionworks-token/route.ts
+import { readFile } from 'node:fs/promises';
+export const dynamic = 'force-dynamic';
+export async function GET() {
+  if (process.env.NODE_ENV !== 'development') return new Response(null, { status: 404 });
+  try { return Response.json({ token: (await readFile('.motionworks/token', 'utf8')).trim() }); }
+  catch { return Response.json({ token: null }); }
+}
+```
+
+Next.js App Router projects must mount from a client boot component rather than rendering the provider directly in a Server Component, fetching the token first:
 
 ```tsx
 'use client';
@@ -42,24 +55,27 @@ export function MotionWorksBoot(): null {
     const w = window as typeof window & { __motionworksRoot?: unknown };
     if (w.__motionworksRoot) return;
     let disposed = false;
-    void Promise.all([import('motionworks/react'), import('react-dom/client')]).then(
-      ([{ MotionWorksProvider }, { createRoot }]) => {
-        if (disposed || w.__motionworksRoot) return;
-        const element = document.createElement('div');
-        element.id = 'motionworks-root';
-        document.body.appendChild(element);
-        const root = createRoot(element);
-        root.render(<MotionWorksProvider />);
-        w.__motionworksRoot = root;
-      },
-    );
+    void Promise.all([
+      import('motionworks/react'),
+      import('react-dom/client'),
+      fetch('/api/motionworks-token').then((r) => r.json()).catch(() => ({ token: null })),
+    ]).then(([{ MotionWorksProvider }, { createRoot }, { token }]) => {
+      if (disposed || w.__motionworksRoot) return;
+      const element = document.createElement('div');
+      element.id = 'motionworks-root';
+      document.body.appendChild(element);
+      const daemonUrl = 'http://127.0.0.1:52340' + (token ? '?token=' + token : '');
+      const root = createRoot(element);
+      root.render(<MotionWorksProvider daemonUrl={daemonUrl} />);
+      w.__motionworksRoot = root;
+    });
     return () => { disposed = true; };
   }, []);
   return null;
 }
 ```
 
-Vite, CRA, and other client-only React apps use the same development guard and separate-root mount in their client entry.
+The overlay renders its own fixed `[data-motionworks-overlay]` container on `<body>`, so `motionworks-root` staying empty is expected. Vite, CRA, and other client-only React apps use the same development guard and separate-root mount in their client entry, exposing the token another dev-only way (a dev middleware or a build-time `define`).
 
 ### Any HTML page
 

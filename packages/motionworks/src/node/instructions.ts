@@ -26,7 +26,29 @@ Run \`npx motionworks init\` once to install MotionWorks, add \`.motionworks/\` 
 
 ### React
 
-Mount \`motionworks/react\` in its own React root from a client component. Never render \`<MotionWorksProvider>\` directly inside a Next.js Server Component. Mount it only in development and render \`<MotionWorksBoot />\` once from the app layout:
+The daemon is **token-authenticated by default** (see \`.motionworks/token\`). The browser cannot read that file, so the mount must pass the token in \`daemonUrl\`. Passing only \`port\` sends no token — every \`/status\` poll is rejected with 401 and the overlay silently never connects. The token persists across daemon restarts; it is not regenerated.
+
+Add a development-only route that exposes the token to the page:
+
+\`\`\`ts
+// app/api/motionworks-token/route.ts
+import { readFile } from 'node:fs/promises';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  if (process.env.NODE_ENV !== 'development')
+    return new Response(null, { status: 404 });
+  try {
+    const token = (await readFile('.motionworks/token', 'utf8')).trim();
+    return Response.json({ token });
+  } catch {
+    return Response.json({ token: null });
+  }
+}
+\`\`\`
+
+Mount \`motionworks/react\` in its own React root from a client component, fetching the token first. Never render \`<MotionWorksProvider>\` directly inside a Next.js Server Component. Mount it only in development and render \`<MotionWorksBoot />\` once from the app layout:
 
 \`\`\`tsx
 'use client';
@@ -38,24 +60,32 @@ export function MotionWorksBoot(): null {
     const w = window as typeof window & { __motionworksRoot?: unknown };
     if (w.__motionworksRoot) return;
     let disposed = false;
-    void Promise.all([import('motionworks/react'), import('react-dom/client')]).then(
-      ([{ MotionWorksProvider }, { createRoot }]) => {
-        if (disposed || w.__motionworksRoot) return;
-        const el = document.createElement('div');
-        el.id = 'motionworks-root';
-        document.body.appendChild(el);
-        const root = createRoot(el);
-        root.render(<MotionWorksProvider port={${port}} />);
-        w.__motionworksRoot = root;
-      },
-    );
+    void Promise.all([
+      import('motionworks/react'),
+      import('react-dom/client'),
+      fetch('/api/motionworks-token')
+        .then((r) => r.json())
+        .catch(() => ({ token: null })),
+    ]).then(([{ MotionWorksProvider }, { createRoot }, { token }]) => {
+      if (disposed || w.__motionworksRoot) return;
+      const el = document.createElement('div');
+      el.id = 'motionworks-root';
+      document.body.appendChild(el);
+      const daemonUrl =
+        'http://127.0.0.1:${port}' + (token ? '?token=' + token : '');
+      const root = createRoot(el);
+      root.render(<MotionWorksProvider daemonUrl={daemonUrl} />);
+      w.__motionworksRoot = root;
+    });
     return () => { disposed = true; };
   }, []);
   return null;
 }
 \`\`\`
 
-In Vite, CRA, or another client-only React app, use the same development-only mount in the client entry.
+The overlay renders its own fixed \`[data-motionworks-overlay]\` container on \`<body>\`, so the \`motionworks-root\` div staying empty is expected — the overlay is live once that container exists and the tokened \`/status\` returns 200.
+
+In Vite, CRA, or another client-only React app with no server routes, expose the token another dev-only way (a tiny dev middleware, or a \`define\`d build-time value read from \`.motionworks/token\`) and pass it in \`daemonUrl\` the same way.
 
 ### Any HTML page
 
