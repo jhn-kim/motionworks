@@ -6,6 +6,12 @@ interface Props {
   node: HTMLElement | null;
   color: string;
   label?: string;
+  // Optional overrides merged onto the outer (fixed-positioned) box — used by
+  // the activation reveal to drive its staggered opacity/scale entrance.
+  // Applied to the fixed element itself so scale transforms don't create a
+  // containing block that would displace the box. Defaults leave hover and
+  // selection highlights unchanged.
+  style?: React.CSSProperties;
 }
 
 // Absolutely-positioned bordered div that tracks a node's bounding rect
@@ -16,6 +22,7 @@ export function NodeHighlight({
   node,
   color,
   label,
+  style,
 }: Props): React.JSX.Element | null {
   const [rect, setRect] = useState<DOMRect | null>(() =>
     node !== null ? node.getBoundingClientRect() : null,
@@ -65,6 +72,11 @@ export function NodeHighlight({
         pointerEvents: "none",
         boxSizing: "border-box",
         transition: "none",
+        // Sit above the canvas/svg drawing layers (9997/9998) so hover and
+        // selection chips are never buried by the overlay; still below the
+        // picker/context-menu modals (10000+). Overridable via `style`.
+        zIndex: 9999,
+        ...style,
       }}
     >
       <div
