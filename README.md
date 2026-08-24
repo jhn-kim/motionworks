@@ -5,7 +5,7 @@
 
 Refine motion by feel on the running app, and MotionWorks writes the result back to source.
 
-After your agent builds an effect, refining it means one of two slow guessing games: nudging numbers in code and reloading to see what moved, or feeding "yo make this more floaty, ease in a little better" back through the agent and waiting on a round-trip. Motion is perceptual, so you can't tell a value is right until you watch it run.
+After your agent builds an effect, refining it means one of two slow guessing games: nudging numbers in code and reloading to see what moved, or feeding "yo make this more floaty, ease in a little better, **and make no mistakes**" back through the agent and waiting on a round-trip. Motion is perceptual, so you can't tell a value is right until you watch it run.
 
 MotionWorks closes that loop, it renders an overlay on the running page, you select the real DOM element, and you tune its motion live on a normalized dial while the effect runs. Replay it, compare against the baseline, and when it's right, Apply writes the change into your stylesheet.
 
