@@ -1150,6 +1150,12 @@ export const ICONS = {
       <path d="M3.5 13.5L10 17l6.5-3.5" opacity="0.5" />
     </svg>
   ),
+  // A mouse cursor — interact mode: clicks drive the app instead of selecting.
+  interact: (
+    <svg {...iconProps} aria-hidden>
+      <path d="M5 3l0 13 3.3-3.4 2 4.6 2.1-.9-2-4.5 4.9-.1L5 3z" />
+    </svg>
+  ),
   // The mark: a keyframe echo — a solid keyframe diamond (the universal
   // animation symbol) with two ghost diamonds trailing off behind it. A
   // keyframe in motion. Rendered ~30% larger than the tool pictograms; the

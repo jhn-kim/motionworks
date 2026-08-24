@@ -15,6 +15,10 @@ const DRILL_MOVE_TOLERANCE_PX = 8;
 
 interface Props {
   active: boolean;
+  // Interact mode: pass clicks through to the app instead of selecting, so the
+  // designer can drive click/app-state animations. A held Alt key does the same
+  // for a single click.
+  interact: boolean;
   selectedEffectId: string | null;
 }
 
@@ -29,6 +33,7 @@ interface Props {
 // animations play exactly as they do with MotionWorks off.
 export function SelectionEngine({
   active,
+  interact,
   selectedEffectId,
 }: Props): React.JSX.Element | null {
   const session = useOverlaySession();
@@ -41,6 +46,10 @@ export function SelectionEngine({
       ? null
       : (getBridge().getNode(selectedEffectId) ?? null),
   );
+  // The capture-phase handlers below live for the toolkit's whole open lifetime,
+  // so read interact-mode through a ref to always see the latest value.
+  const interactRef = useRef(interact);
+  interactRef.current = interact;
 
   // Last-click state so we can tell a follow-up click (same spot, quick) from
   // a fresh click. A follow-up is treated as a double-click: hone straight
@@ -113,6 +122,12 @@ export function SelectionEngine({
         setHover(null);
         return;
       }
+      // Interact mode drives the app, not selection — no hover outline, so the
+      // designer sees they're interacting rather than about to select.
+      if (interactRef.current) {
+        setHover(null);
+        return;
+      }
       // Hover just outlines the outermost registered ancestor — it's what a
       // single click grabs. The deepest element is only relevant once the
       // designer commits to double-clicking.
@@ -130,6 +145,10 @@ export function SelectionEngine({
       // Overlay-owned UI (toolbox, scrubber, menus) handles its own clicks.
       if (event.target instanceof Element && isOverlayNode(event.target))
         return;
+      // Interact mode (or a held Alt for a momentary one) lets the click reach
+      // the app untouched so an accordion/menu/press animation actually runs;
+      // selection is left as-is so the designer keeps their place.
+      if (interactRef.current || event.altKey) return;
 
       const stack = registeredStackAt(event.clientX, event.clientY);
 
