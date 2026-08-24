@@ -205,7 +205,9 @@ function Hero() {
 }
 \`\`\`
 
-**Existing JS motion: adopt it.** Run \`npx motionworks adoptions\` to see pending adoptions (GSAP animations the designer queued from the overlay). For each, oldest first — and for any Framer Motion / react-spring animation the designer asks you to expose — apply the same lift to exactly that one element:
+**Proactively offer to expose Framer Motion / react-spring.** These have no runtime signal, so the overlay can't surface them — you are the discovery path. When the designer is refining motion (the overlay is open, or they ask to make animations editable) in a project that uses these libraries, don't wait to be asked per-animation: scan the source for \`<motion.\`/\`useSpring(\` usages, tell the designer what you found, and offer to make them editable. But let the designer choose which matter — surface a short list of significant ones (page/section entrances, hero motion), not every tap or hover micro-interaction, and never rewrite them all in one silent pass. Lift only the ones they confirm, one reviewable change at a time, running the project's typecheck/build after each and stopping if it fails.
+
+**Existing JS motion: adopt it.** Run \`npx motionworks adoptions\` to see pending adoptions (GSAP animations the designer queued from the overlay). For each, oldest first — and for any Framer Motion / react-spring animation the designer confirms — apply the same lift to exactly that one element:
 
 1. Declare each \`--mw-*\` variable on the element's CSS rule at the current value.
 2. Replace the hardcoded value with \`useMotionVar(ref, '--mw-var', <current value>, opts)\`, whose fallback is the original literal — so if the variable is ever absent the animation is unchanged. Register the element with \`useMotionWorks\`.
