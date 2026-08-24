@@ -219,4 +219,32 @@ describe("Toolbox sizing", () => {
     expect(inactiveApply.style.background).toBe("transparent");
     expect(inactiveApply.style.transition).not.toContain("background");
   });
+
+  it("renders an inert verb dimmed, still hoverable, and unclickable", () => {
+    const onClick = vi.fn();
+    const inertPlay: Tool = {
+      id: "replay",
+      label: "Play animation",
+      hint: "trigger it manually",
+      kind: "verb",
+      icon: <span />,
+      inert: true,
+      onClick,
+    };
+    render(
+      <Toolbox
+        tools={[...tools, inertPlay]}
+        dock="bottom"
+        onDockChange={() => undefined}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Play animation" });
+    // Not natively disabled — a disabled <button> stops emitting the hover
+    // events the "trigger it manually" chip depends on.
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(button.style.cursor).toBe("default");
+    fireEvent.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });

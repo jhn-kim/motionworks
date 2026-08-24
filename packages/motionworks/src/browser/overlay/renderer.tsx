@@ -648,15 +648,31 @@ export function DynamicToolbox({
     //   3. otherwise — restart the effect's CSS animation directly, the
     //      generic fallback that replays any CSS keyframe motion.
     const replayCapable = selectedEffect?.capabilities?.replay === true;
+    // Motion MotionWorks can't re-run from script (scroll-driven progress,
+    // hover/app-state transitions). Play stays visible but inert, with a chip
+    // telling the designer to trigger it themselves, rather than firing a
+    // restart that does nothing.
+    const manualTrigger = selectedEffect?.capabilities?.manualTrigger === true;
     const bridgeNode =
       selectedEffect !== null
         ? (getBridge().getNode(selectedEffect.id) ?? null)
         : null;
     const pressSelf =
       !replayCapable &&
+      !manualTrigger &&
       bridgeNode !== null &&
       findInteractiveNode(bridgeNode) === bridgeNode;
-    if (selectedEffect !== null) {
+    if (selectedEffect !== null && manualTrigger) {
+      result.push({
+        id: "replay",
+        label: "Play animation",
+        hint: "trigger it manually",
+        kind: "verb",
+        icon: ICONS.replay,
+        inert: true,
+        selected: false,
+      });
+    } else if (selectedEffect !== null) {
       result.push({
         id: "replay",
         label: pressSelf

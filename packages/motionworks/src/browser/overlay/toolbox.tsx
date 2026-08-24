@@ -15,6 +15,9 @@ export interface Tool {
   // One-line explanation (≤6 words) shown under the name in the hover chip.
   hint?: string;
   disabled?: boolean;
+  // Like `disabled` (dimmed, no action) but still hoverable, so its hover chip
+  // can explain why. Used for Play on motion that must be triggered manually.
+  inert?: boolean;
   // Resting tint for semantically colored verbs (green apply, red discard);
   // applied whenever the tool is enabled. hoverColor brightens it on hover.
   tint?: string;
@@ -652,23 +655,30 @@ function ToolButton({
   );
   const clickAnimation = ICON_CLICK_ANIMATION[tool.id];
   const disabled = tool.disabled === true;
+  // Inert tools look disabled but stay hoverable so their chip can explain why
+  // (Play on scroll-driven / hover-triggered motion). `dimmed` drives the
+  // visuals; the native `disabled` attribute is reserved for truly disabled
+  // tools, since a disabled <button> stops emitting the hover events the chip
+  // needs.
+  const inert = tool.inert === true;
+  const dimmed = disabled || inert;
   // A result can remain semantically selected while its action becomes
   // unavailable (Apply's brief completed state is the common case). Never
   // render that combination as a dimmed active tile: inactive verbs are a
   // grey icon on transparent glass.
-  const visuallyActive = active && !disabled;
+  const visuallyActive = active && !dimmed;
   const background = visuallyActive
     ? GLASS.fillActive
-    : hover && !disabled
+    : hover && !dimmed
       ? GLASS.fillHover
       : "transparent";
   const idleColor =
-    !disabled && tool.tint !== undefined
+    !dimmed && tool.tint !== undefined
       ? tool.tint
       : "rgba(255, 255, 255, 0.78)";
   const color = visuallyActive
     ? (tool.tint ?? "rgb(255, 255, 255)")
-    : hover && !disabled
+    : hover && !dimmed
       ? (tool.hoverColor ?? tool.tint ?? "rgba(255, 255, 255, 0.98)")
       : idleColor;
   return (
@@ -678,7 +688,7 @@ function ToolButton({
       aria-label={tool.label}
       aria-pressed={active}
       onClick={
-        tool.onHoldStart !== undefined
+        tool.onHoldStart !== undefined || inert
           ? undefined
           : () => {
               if (pendingClickRef.current) return;
@@ -718,10 +728,10 @@ function ToolButton({
         padding: 0,
         background,
         color,
-        cursor: disabled ? "default" : "pointer",
-        opacity: !entered ? 0 : disabled ? 0.4 : 1,
+        cursor: dimmed ? "default" : "pointer",
+        opacity: !entered ? 0 : dimmed ? 0.4 : 1,
         transform: entered ? "scale(1)" : "scale(0.7)",
-        transition: disabled
+        transition: dimmed
           ? "color 140ms ease, opacity 260ms ease, transform 320ms cubic-bezier(0.32, 1.2, 0.35, 1)"
           : "background 140ms ease, color 140ms ease, opacity 260ms ease, transform 320ms cubic-bezier(0.32, 1.2, 0.35, 1)",
       }}

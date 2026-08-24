@@ -63,6 +63,12 @@ export interface MotionWorksCapabilities {
   // When pressed, update() receives the reserved `__motionworksReplay` key
   // and should re-run the animation from its initial state.
   replay?: boolean;
+  // Motion that MotionWorks cannot re-run from script: scroll-driven
+  // animations (progress is bound to scroll position) and hover/app-state
+  // transitions (:hover can't be forced, class toggles are app-owned). The
+  // toolkit renders Play inert with a "trigger it manually" chip instead of
+  // firing a no-op restart. Auto-detection sets this; authored schemas may too.
+  manualTrigger?: boolean;
 }
 
 export interface MotionWorksRegistration {

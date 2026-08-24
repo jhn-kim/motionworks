@@ -56,6 +56,9 @@ class Bridge {
         ? {
             ...(registration.capabilities.replay === true && { replay: true }),
             ...(registration.capabilities.scrub === true && { scrub: true }),
+            ...(registration.capabilities.manualTrigger === true && {
+              manualTrigger: true,
+            }),
           }
         : undefined;
     const effectiveRegistration: MotionWorksRegistration = {
