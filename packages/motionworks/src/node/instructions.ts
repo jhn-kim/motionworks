@@ -240,12 +240,13 @@ function Hero() {
 **Existing JS motion: adopt it.** Run \`npx motionworks adoptions\` to see pending adoptions (GSAP animations the designer queued from the overlay). For each, oldest first — and for any Framer Motion / react-spring animation the designer confirms — apply the same lift to exactly that one element:
 
 1. Declare each \`--mw-*\` variable on the element's CSS rule at the current value.
-2. Replace the hardcoded value with \`useMotionVar(ref, '--mw-var', <current value>, opts)\`, whose fallback is the original literal — so if the variable is ever absent the animation is unchanged. Register the element with \`useMotionWorks\`.
-3. If the animation can be re-run (a react-spring \`useSpring\`, a GSAP tween, a one-shot entrance), declare \`capabilities: { replay: true }\` in the schema and listen for the \`motionworks:replay\` event on the element to restart it (e.g. \`api.start({ from, to })\` for react-spring, \`tween.restart()\` for GSAP). Without this the toolkit's Play button can't preview a JS-driven animation.
-4. Change nothing else and do not alter behavior. Make it one reviewable change per animation.
-5. For a queued adoption, run \`npx motionworks adopt-ack <id>\`.
+2. Replace the hardcoded value with \`useMotionVar(ref, '--mw-var', <current value>, opts)\`, whose fallback is the original literal — so if the variable is ever absent the animation is unchanged. Register the element with \`useMotionWorks\`. Give every editable \`duration\` a \`min\` above 0 (e.g. \`min: 50\`): a GSAP/JS animation with duration 0 breaks and cannot recover.
+3. **Apply the changed value without recreating the animation.** Recreating a running/looping tween or spring on every edit is what makes it break and not recover (finding: lowering GSAP duration then raising it leaves it dead). Instead push the new value into the LIVE instance: GSAP \`tween.duration(seconds)\` (never rebuild the tween); react-spring \`api.start({ ...config })\`; Framer \`controls.set()\`/re-\`start()\`. Subscribe with \`onParamsChange\` (not a raw \`useEffect\` that tears the animation down and rebuilds it).
+4. If the animation can be re-run, declare \`capabilities: { replay: true }\` and attach a \`motionworks:replay\` listener that restarts the LIVE instance (react-spring \`api.start({ reset: true })\`, GSAP \`tween.restart()\`, Framer \`controls.start(...)\`). Attach it in an effect keyed to the element so it survives HMR/reload (finding: Play stops working after a reload when the listener isn't re-attached). Without this the Play button can't preview the animation.
+5. Change nothing else and do not alter behavior. Make it one reviewable change per animation.
+6. For a queued adoption, run \`npx motionworks adopt-ack <id>\`.
 
-After adoption the effect is refined like any other. \`useMotionVar\` does the SSR-safe, unit-correct, live-updating read for you — do not hand-roll \`getComputedStyle\`.
+After adoption the effect is refined like any other. \`useMotionVar\` does the SSR-safe, unit-correct, live-updating read for you — do not hand-roll \`getComputedStyle\`. \`useMotionVar\` returns a single \`number\`; a spring's physics is a \`{ stiffness, damping, mass }\` triple, so for a proper single spring control use a \`spring-response\` param read with \`readParams\`/\`onParamsChange\` rather than two scalar \`useMotionVar\` knobs.
 
 ## Anti-patterns
 
