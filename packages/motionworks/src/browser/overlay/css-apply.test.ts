@@ -66,6 +66,21 @@ describe("CSS apply", () => {
     node.remove();
   });
 
+  it("locates a pseudo-element rule by its originating element", () => {
+    document.head.innerHTML =
+      '<style data-vite-dev-id="src/b.css">.spin::after{animation-duration:1s}</style>';
+    const node = document.createElement("div");
+    node.className = "spin";
+    document.body.append(node);
+    // ::after is invalid in closest(); the base selector must still match the
+    // host, and the full pseudo selector is reported for writeback.
+    expect(findDeclaringRule(node, "animation-duration")).toMatchObject({
+      selectorText: ".spin::after",
+      sourceFile: "src/b.css",
+    });
+    node.remove();
+  });
+
   it("refreshes only for stylesheet mutations, not overlay UI changes", async () => {
     const refresh = vi.fn();
     const stop = watchStylesheets(refresh);

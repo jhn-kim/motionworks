@@ -11,6 +11,10 @@ export interface KeyframeBinding {
   animation?: Animation;
   animationName: string;
   occurrence: number;
+  // "::after"/"::before" when the animation targets a pseudo-element; the
+  // baseline must then be read from the pseudo-element's computed style, not the
+  // host's (the host has no animation of its own).
+  pseudoElement?: string;
 }
 
 export interface CssBinding {
@@ -30,7 +34,15 @@ export function bindKeyframeEffect(
   occurrence = 0,
   animation?: Animation,
 ): KeyframeBinding {
-  return { effect, animationName, occurrence, ...(animation && { animation }) };
+  const pseudoElement = effect.pseudoElement ?? undefined;
+  return {
+    effect,
+    animationName,
+    occurrence,
+    ...(animation && { animation }),
+    ...(pseudoElement !== undefined &&
+      pseudoElement !== "" && { pseudoElement }),
+  };
 }
 
 // Scroll- and view-driven animations carry a timeline other than the document
@@ -53,7 +65,7 @@ export function readBaseline(
 ): { value: unknown; binding: CssBinding } {
   const variable = varNameFor(key, spec);
   const inlineBefore = node.style.getPropertyValue(variable);
-  const computed = getComputedStyle(node);
+  const computed = getComputedStyle(node, keyframe?.pseudoElement ?? null);
   let css = computed.getPropertyValue(variable);
   if (keyframe !== undefined && !variable.startsWith("--")) {
     const names = computed
@@ -244,6 +256,29 @@ export interface DeclaringRule {
   sheetHref: string;
   sourceFile?: string;
 }
+
+// Pseudo-ELEMENTS a rule can target. `closest()`/`matches()` reject a selector
+// ending in one, which made pseudo-element animations (`.x::after { animation }`,
+// discovered against their host element) impossible to locate for writeback. We
+// strip the trailing pseudo-element to match the originating element, then keep
+// the full selector — pseudo included — for the writer.
+const PSEUDO_ELEMENT_SUFFIX =
+  /::?(?:before|after|first-line|first-letter|marker|placeholder|selection|backdrop|file-selector-button)\s*$/i;
+
+function selectorMatchesNode(node: HTMLElement, selectorText: string): boolean {
+  return selectorText.split(",").some((part) => {
+    const trimmed = part.trim();
+    if (trimmed === "") return false;
+    if (trimmed === ":root") return true;
+    const base = trimmed.replace(PSEUDO_ELEMENT_SUFFIX, "").trim();
+    if (base === "") return false;
+    try {
+      return node.closest(base) !== null;
+    } catch {
+      return false;
+    }
+  });
+}
 export function findDeclaringRule(
   node: HTMLElement,
   varName: string,
@@ -263,8 +298,7 @@ export function findDeclaringRule(
             null;
           if (
             rule.style.getPropertyValue(varName) !== "" &&
-            (rule.selectorText === ":root" ||
-              node.closest(rule.selectorText) !== null)
+            selectorMatchesNode(node, rule.selectorText)
           )
             found = {
               selectorText: rule.selectorText,
