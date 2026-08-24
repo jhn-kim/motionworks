@@ -176,9 +176,13 @@ describe("runSetup", () => {
       "react-skipped",
     ]);
     const output = logs.join("\n");
-    expect(output).toContain("Tell your coding agent to set up MotionWorks");
+    expect(output).toContain("Tell your coding agent to add MotionWorks");
     expect(output).toContain("MOTIONWORKS.md");
     expect(output).toContain("npx motionworks");
+    // The already-running-agent fallback (an agent's context is loaded once, at
+    // session start, so a mid-session install is invisible until it reloads).
+    expect(output).toContain("Already have a running agent?");
+    expect(output).toContain("start a new session");
   });
 });
 

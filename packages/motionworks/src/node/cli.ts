@@ -21,7 +21,7 @@ import {
 import { startDaemon } from "./daemon.js";
 import { detectAgent } from "./agent.js";
 import { PACKAGE_VERSION } from "./version.js";
-import { banner, dim } from "./ui.js";
+import { agentHint, banner, dim } from "./ui.js";
 
 const HELP = `Usage:
   npx motionworks [--port N] [--agent=auto|claude|codex|off]  Start the daemon.
@@ -43,6 +43,10 @@ async function main(): Promise<void> {
     return void process.stdout.write(`${PACKAGE_VERSION}\n`);
   if (command === "help" || args.includes("--help") || args.includes("-h"))
     return void process.stdout.write(HELP);
+  // Self-identify on stderr for every real command. An agent that runs the CLI
+  // (the only reliable mid-session channel) then learns what MotionWorks is even
+  // when its session predates the install; stderr keeps stdout parseable.
+  process.stderr.write(`${agentHint(PACKAGE_VERSION)}\n`);
   if (command === "init") {
     const cwd = process.cwd();
     if (!args.includes("--force") && !(await isProjectRoot(cwd))) {

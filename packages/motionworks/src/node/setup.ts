@@ -290,9 +290,14 @@ export async function runSetup(
     log("");
     log(heading("Next steps"));
     log(
-      `  ${cyan("1.")} Tell your coding agent to set up MotionWorks. It reads ${cyan(GUIDE_FILE)}, mounts the overlay in your app, and starts it with ${cyan("npx motionworks")}.`,
+      `  ${cyan("1.")} Tell your coding agent to add MotionWorks to your app. It reads ${cyan(GUIDE_FILE)}, mounts the overlay, and starts the daemon with ${cyan("npx motionworks")}.`,
     );
-    log(`  ${dim(`Prefer to do it by hand? Follow ${GUIDE_FILE}.`)}`);
+    // The one gap CLI self-identification can't close: an agent whose session
+    // started before this install won't have the new instructions loaded until
+    // it reloads its context. Tell the user exactly what to do.
+    log(
+      `  ${cyan("2.")} Already have a running agent? It won't see these instructions until its context reloads. Tell it to read ${cyan(GUIDE_FILE)} — or start a new session.`,
+    );
   }
 
   return { setupOutcomes, initOutcomes };

@@ -53,6 +53,21 @@ export function heading(text: string): string {
   return bold(text);
 }
 
+/**
+ * One-line self-identification printed to STDERR at the top of every real CLI
+ * command. It goes to stderr on purpose: stdout stays byte-for-byte parseable
+ * (`changes --json`, `--brief`), yet a coding agent — which ingests a command's
+ * stderr as part of the tool result — still reads it. This is the only channel
+ * that reaches an agent whose session began before MotionWorks was installed,
+ * since CLAUDE.md/AGENTS.md are loaded only at session start.
+ */
+export function agentHint(version: string): string {
+  return dim(
+    `MotionWorks v${version} — direct-manipulation motion layer for AI coding agents. ` +
+      `Agents: read ./MOTIONWORKS.md before acting on motion.`,
+  );
+}
+
 /** The header shown once at the top of `init`. */
 export function banner(version: string): string {
   const logo =

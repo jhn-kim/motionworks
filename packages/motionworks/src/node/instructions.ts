@@ -22,7 +22,7 @@ npx motionworks
 
 Confirm it is up with \`npx motionworks status\` before you finish — it prints \`Daemon: running\` when connected. If a daemon is already on that port, \`npx motionworks\` exits with \`already running\`; use that one rather than starting a second. Ask the designer to run it themselves only when you genuinely cannot: you have no way to run a background process, or it exits on launch.
 
-Run \`npx motionworks init\` once to install MotionWorks, add \`.motionworks/\` to \`.gitignore\`, remove any stale MotionWorks MCP entry, and generate this guide plus the short instruction-file stanza.
+\`npx motionworks init\` is the one-time **human** setup step: it installs MotionWorks, adds \`.motionworks/\` to \`.gitignore\`, removes any stale MotionWorks MCP entry, and generates this guide plus the short instruction-file stanza. If you are reading this file, init has already run — do not re-run it to "set up"; re-run it only to upgrade to a newer MotionWorks version. Your job is to mount the overlay and start the daemon.
 
 ### React
 

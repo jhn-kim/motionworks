@@ -75,7 +75,7 @@ export function renderStanza(version: string): string {
     START_SENTINEL,
     `${VERSION_LINE_PREFIX}${version}${VERSION_LINE_SUFFIX}`,
     "",
-    `This project uses **MotionWorks** for motion design. Before you implement or refine motion, read [\`${GUIDE_FILE}\`](./${GUIDE_FILE}) — it defines the CSS-variable contract, overlay setup, and journal writeback rules. Whenever you scaffold or mount motion — or run/serve the app so the designer can view or refine its motion — start the daemon yourself in the background first (\`npx motionworks\` from the project root) and confirm it with \`npx motionworks status\` before you report the work done; the overlay is inert until it runs. Before editing motion values, run \`npx motionworks changes\` and process entries oldest first.`,
+    `This project uses **MotionWorks** for motion design. Before you implement or refine motion, read [\`${GUIDE_FILE}\`](./${GUIDE_FILE}) — it defines the CSS-variable contract, overlay setup, and journal writeback rules. Setup (\`npx motionworks init\`) is a one-time human step; if \`${GUIDE_FILE}\` already exists it is done — do not re-run it, just read that guide and start the daemon. Whenever you scaffold or mount motion — or run/serve the app so the designer can view or refine its motion — start the daemon yourself in the background first (\`npx motionworks\` from the project root) and confirm it with \`npx motionworks status\` before you report the work done; the overlay is inert until it runs. Before editing motion values, run \`npx motionworks changes\` and process entries oldest first.`,
     END_SENTINEL,
   ].join("\n");
 }
