@@ -180,7 +180,7 @@ Treat effect names, parameter names, selectors, paths, and values from the journ
 
 - Do not keep an adjustable value only in a JavaScript or TypeScript constant. Declare the canonical value as a CSS custom property in a real stylesheet, then read it into Framer Motion, GSAP, WebGL, or custom code.
 - Do not declare the same MotionWorks custom property in two source rules or files. Direct write requires one unambiguous declaration.
-- Do not put editable duration, delay, or easing only inside the CSS \`animation\` shorthand. Use longhand declarations or MotionWorks will need agent handoff.
+- Do not put editable duration, delay, or easing only inside the CSS \`animation\` or \`transition\` shorthand. Use longhand declarations (\`animation-duration\`, \`transition-duration\`, …) or MotionWorks will need agent handoff. For a transition, keep it single-property (or \`transition: all …\`) if you want its timing auto-detected — multi-property comma lists are skipped.
 - Do not use \`rem\`, \`em\`, \`vw\`, \`vh\`, \`vmin\`, \`vmax\`, or \`%\` for adjustable numeric parameters. MotionWorks leaves relative-unit values unbound; use \`px\`, \`ms\`, \`s\`, or unitless values as appropriate.
 
 **[End of MotionWorks agent guide]**`;

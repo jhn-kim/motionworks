@@ -44,7 +44,7 @@ Use `var` to bind a different property:
 radius: { type: 'spatial-radius', var: '--mw-influence', unit: 'px' }
 ```
 
-Normal authored parameters should use the `--mw-*` namespace. Validation accepts any custom property beginning with `--` for live preview, but the daemon intentionally accepts Apply requests only for `--mw-*` variables. The only non-custom properties accepted are the auto-detection longhands `animation-duration`, `animation-delay`, and `animation-timing-function`.
+Normal authored parameters should use the `--mw-*` namespace. Validation accepts any custom property beginning with `--` for live preview, but the daemon intentionally accepts Apply requests only for `--mw-*` variables. The only non-custom properties accepted are the auto-detection longhands `animation-duration`, `animation-delay`, `animation-timing-function`, `transition-duration`, `transition-delay`, and `transition-timing-function`.
 
 The unit read from CSS is preserved on encode. A declaration written as `0.3s` remains seconds even though the runtime/editing value is normalized to `300` milliseconds. Relative numeric units (`rem`, `em`, viewport units, and `%`) cannot be converted without changing meaning; they leave the parameter unbound and emit a warning.
 
@@ -232,10 +232,14 @@ After validation, binding decodes the computed CSS value. Missing values, malfor
 
 ## What Happens Without an Explicit Schema
 
-Running CSS `@keyframes` animations are auto-detected while the overlay is open. `document.getAnimations()` is rescanned every 1.5 seconds; each `CSSAnimation` becomes a selectable effect with any decodable duration, delay, and easing controls. Live preview uses `KeyframeEffect.updateTiming()` while commits name the corresponding animation longhand.
+Running CSS `@keyframes` animations are auto-detected. `document.getAnimations()` is rescanned every 1.5 seconds and an `animationstart` listener catches new animations immediately; each `CSSAnimation` becomes a selectable effect with any decodable duration, delay, and easing controls. Live preview uses `KeyframeEffect.updateTiming()` while commits name the corresponding animation longhand. Detection runs from provider mount, not only while the toolkit is open, so an entrance one-shot that finishes on load is still captured and — via retention while its element stays in the DOM — stays selectable.
 
 An explicitly registered element owns the animation semantics of its subtree. CSS animations on its descendants are not separately auto-detected, which keeps repeated staggered children or implementation-level keyframes from producing duplicate surfaces and arbitrary timing sliders. Register a descendant explicitly when it is independently meaningful and should be selected on its own.
 
-Readable keyframe names become display names; hashed names are described from their keyframes. Auto-detected ids are `css::<animationName>#<n>`. CSS transitions are deliberately not detected because they exist only while running and would flicker in and out of registration.
+Readable keyframe names become display names; hashed names are described from their keyframes. Pseudo-element animations (`.x::after { animation }`) are attributed to their host element, read their baseline from the pseudo-element's computed style, and write back to the full `::after` rule.
 
-Framer Motion, GSAP, react-spring, WebGL, canvas, and custom JavaScript effects are not inferred. The coding agent must add an explicit schema and make the effect read the CSS-backed values.
+**Scroll-driven animations** (`animation-timeline: scroll()`/`view()`) are detected but carry a non-document timeline, so their progress follows scroll position, not time. Play is rendered inert (a "trigger it manually" chip) because it can't be advanced from script, and the duration control is suppressed because duration doesn't drive scroll playback; decodable delay/easing stay editable.
+
+**CSS transitions** are auto-detected while the toolkit is open — surfaced from `document.getAnimations()` (a running transition is a `CSSTransition`) and captured promptly on `transitionrun`. Duration, delay, and easing edit and persist through the `transition-*` longhands. They are marked `manualTrigger` (Play inert) because `:hover` can't be forced and class toggles are app-owned. Scope: single-value transitions (`transition-property` "all" or one property, single-valued timing); multi-property comma lists are skipped to avoid clobbering sibling properties.
+
+Framer Motion, GSAP, react-spring, WebGL, canvas, and custom JavaScript effects run on their own main-thread engines and do **not** appear in `document.getAnimations()` (verified: even Motion's `animate()` and `<motion.div>` use a rAF engine, not WAAPI). They cannot be auto-detected by runtime enumeration. GSAP is enumerable through its own `gsap.globalTimeline`; the rest need the coding agent to add an explicit schema and make the effect read the CSS-backed values (see the adoption workflow).

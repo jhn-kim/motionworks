@@ -80,6 +80,7 @@ How a designer watches an animation that doesn't run continuously — entrances 
 
 - **Capability replay:** effects declaring `capabilities: { replay: true }` re-run their animation when the registered node receives a bubbling `motionworks:replay` CustomEvent (a fresh timestamp in `detail` per press), using the current uncommitted CSS values.
 - **Simulated press:** effects on clickable elements that *don't* declare the capability get a synthetic `pointerdown`/`mousedown`, held ~140ms, then `pointerup`/`mouseup` — enough to fire press springs. Deliberately no `click` is dispatched: click is the element's real activation (add to cart, navigate), and replay must show the animation without running the behavior. Effects whose animation lives in the click handler itself must declare the capability and re-run the animation from the replay event instead.
+- **Capability manualTrigger:** effects declaring `capabilities: { manualTrigger: true }` cannot be re-run from script — scroll-driven animations (progress is bound to scroll position) and hover/app-state CSS transitions (`:hover` can't be forced, class toggles are app-owned). Play is rendered inert: dimmed and unclickable but still hoverable, so its chip reads "trigger it manually." Auto-detection sets this for scroll-driven animations and transitions.
 
 ### Compare
 

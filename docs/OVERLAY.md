@@ -114,9 +114,13 @@ Ids are never renumbered while live. Repeated component instances get distinct i
 
 The standalone overlay scans `data-motionworks` attributes and `<script type="application/motionworks+json">` selector maps. A MutationObserver registers added nodes, responds to attribute changes, and unregisters disconnected nodes.
 
-### CSS animation auto-detection
+### CSS animation and transition auto-detection
 
-While open, the overlay scans `document.getAnimations()` every 1.5 seconds. Running `CSSAnimation` instances receive selectable effects with duration, delay, and easing when decodable. An explicitly registered element owns the animation semantics of its subtree, so descendant CSS animations are not also auto-detected; register a descendant explicitly only when it is a genuinely independent effect. CSS transitions are not registered because their transient lifecycle would make the effect list flicker.
+CSS `@keyframes` animations are auto-detected from provider mount: `document.getAnimations()` is scanned every 1.5 seconds and an `animationstart` listener catches new ones immediately, so entrance one-shots that finish before the toolkit opens are still captured and retained while their element stays in the DOM. Running `CSSAnimation` instances receive selectable effects with duration, delay, and easing when decodable. Scroll-driven animations (non-document timeline) are marked `manualTrigger` — Play is inert with a "trigger it manually" chip — and their duration control is suppressed. Pseudo-element animations are attributed to their host element and read/write against the pseudo-element rule.
+
+CSS transitions are auto-detected while the toolkit is open, from `document.getAnimations()` (a running transition is a `CSSTransition`) and promptly on `transitionrun`. They edit and persist duration/delay/easing through the `transition-*` longhands and are marked `manualTrigger` (`:hover` and class toggles can't be re-triggered from script). Single-value transitions only; multi-property comma lists are skipped. Effects are keyed by element so re-hovering reuses the registration, and retained until the element leaves the DOM so a finished transition stays selectable.
+
+An explicitly registered element owns the animation semantics of its subtree, so descendant CSS animations are not also auto-detected; register a descendant explicitly only when it is a genuinely independent effect.
 
 ---
 
