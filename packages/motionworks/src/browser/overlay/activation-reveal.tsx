@@ -6,18 +6,21 @@ import { NodeHighlight } from "./highlight.js";
 import { useSessionState } from "./hooks.js";
 
 // A one-shot "here's what you can edit" cue when the toolkit opens: every
-// registered surface flashes its NodeHighlight (outline + name chip, exactly the
-// hover/selection highlight) in a top-to-bottom sweep, then fades out. The only
-// added motion is a per-surface opacity pulse whose delay is proportional to the
-// surface's vertical position, so it reads as a line sweeping down the page
-// rather than a strobe of every box at once.
+// on-screen registered surface flashes its NodeHighlight (outline + name chip,
+// exactly the hover/selection highlight), staggered top-to-bottom in reading
+// order, holds long enough to read, then fades out together. This restores the
+// 0.4 activation reveal — a sequential pop + hold, not a single positional
+// pulse — while keeping the density guards the sweep added.
 //
 // Density-aware (detection now surfaces far more than early versions did): only
-// on-screen surfaces, capped, delay measured once at open, self-cleaning, and
-// purely visual (pointer-events:none) — it never touches state or writeback.
+// on-screen surfaces, capped, sorted once at open. NodeHighlight tracks each
+// node's rect per frame, so badges stay glued to elements that move mid-reveal.
+// Purely visual (pointer-events:none) — it never touches state or writeback.
 
-const SWEEP_MS = 340; // time for the sweep line to travel top → bottom
-const PULSE_MS = 620; // each surface's fade in → hold → out
+const STAGGER_MS = 45; // gap between successive surfaces entering
+const IN_MS = 240; // per-surface fade + scale in
+const HOLD_MS = 1200; // time fully shown before the fade-out
+const OUT_MS = 300; // fade-out (all surfaces together)
 const MAX_SURFACES = 60;
 const REVEAL_COLOR = "rgb(255, 255, 255)";
 
@@ -25,7 +28,6 @@ interface RevealSurface {
   key: string;
   node: HTMLElement;
   label: string | undefined;
-  delay: number;
 }
 
 function collect(nameById: Map<string, string>): RevealSurface[] {
@@ -53,10 +55,10 @@ function collect(nameById: Map<string, string>): RevealSurface[] {
         key: `${id}:${String(surfaces.length)}`,
         node,
         label: nameById.get(id),
-        // Delay ∝ vertical position → a line sweeping down the page.
-        delay: Math.max(0, (rect.top / vh) * SWEEP_MS),
       });
     }
+  // Reading order ≈ top-to-bottom. A stable rect.top sort avoids the
+  // never-returns-0 comparator the 0.4 version used.
   surfaces.sort(
     (a, b) =>
       a.node.getBoundingClientRect().top - b.node.getBoundingClientRect().top,
@@ -70,56 +72,89 @@ export function ActivationReveal({
   active: boolean;
 }): React.JSX.Element | null {
   const state = useSessionState();
-  // Read the id→name map at open time without re-triggering the sweep on every
+  // Read the id→name map at open time without re-triggering the reveal on every
   // state change.
   const nameByIdRef = useRef(new Map<string, string>());
   nameByIdRef.current = new Map(
     state.effects.map((effect) => [effect.id, humanizeEffectName(effect.name)]),
   );
   const [surfaces, setSurfaces] = useState<RevealSurface[]>([]);
+  const [out, setOut] = useState(false);
 
   useEffect(() => {
     if (!active) {
       setSurfaces([]);
+      setOut(false);
       return;
     }
+    setOut(false);
+    const timers: number[] = [];
     // Measure after the open frame so rects are settled.
-    const raf = requestAnimationFrame(() =>
-      setSurfaces(collect(nameByIdRef.current)),
-    );
-    const clear = window.setTimeout(
-      () => setSurfaces([]),
-      SWEEP_MS + PULSE_MS + 100,
-    );
+    const raf = requestAnimationFrame(() => {
+      const collected = collect(nameByIdRef.current);
+      setSurfaces(collected);
+      // Last surface finishes entering at (n-1)*STAGGER + IN; hold from there.
+      const inDone =
+        Math.max(0, collected.length - 1) * STAGGER_MS + IN_MS + HOLD_MS;
+      timers.push(window.setTimeout(() => setOut(true), inDone));
+      timers.push(
+        window.setTimeout(() => {
+          setSurfaces([]);
+          setOut(false);
+        }, inDone + OUT_MS),
+      );
+    });
     return () => {
       cancelAnimationFrame(raf);
-      window.clearTimeout(clear);
+      for (const timer of timers) window.clearTimeout(timer);
     };
   }, [active]);
 
   if (surfaces.length === 0) return null;
   return (
     <>
-      <style
-        data-motionworks-overlay-style
-      >{`@keyframes mw-activation-reveal{0%{opacity:0}18%{opacity:1}55%{opacity:1}100%{opacity:0}}`}</style>
-      {surfaces.map((surface) => (
-        // A zero-box wrapper carries the staggered opacity pulse; opacity on the
-        // ancestor applies to the fixed-position NodeHighlight it wraps.
-        <div
+      {surfaces.map((surface, index) => (
+        <RevealSurfaceView
           key={surface.key}
-          style={{
-            opacity: 0,
-            animation: `mw-activation-reveal ${String(PULSE_MS)}ms ease ${String(surface.delay)}ms both`,
-          }}
-        >
-          <NodeHighlight
-            node={surface.node}
-            color={REVEAL_COLOR}
-            label={surface.label}
-          />
-        </div>
+          surface={surface}
+          delayMs={index * STAGGER_MS}
+          out={out}
+        />
       ))}
     </>
+  );
+}
+
+function RevealSurfaceView({
+  surface,
+  delayMs,
+  out,
+}: {
+  surface: RevealSurface;
+  delayMs: number;
+  out: boolean;
+}): React.JSX.Element {
+  // First paint at opacity 0 / slightly scaled up; flip on the next frame so
+  // the (delayed) entrance transition actually runs.
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const visible = entered && !out;
+  return (
+    <NodeHighlight
+      node={surface.node}
+      color={REVEAL_COLOR}
+      label={surface.label}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "scale(1)" : "scale(1.04)",
+        // Delays stagger the way in; the way out fades everything together.
+        transition: out
+          ? `opacity ${String(OUT_MS)}ms ease, transform ${String(OUT_MS)}ms ease`
+          : `opacity ${String(IN_MS)}ms ease ${String(delayMs)}ms, transform ${String(IN_MS)}ms cubic-bezier(0.3, 0.9, 0.3, 1) ${String(delayMs)}ms`,
+      }}
+    />
   );
 }
