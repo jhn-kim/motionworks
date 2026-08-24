@@ -43,6 +43,52 @@ const request = (path: string, init?: RequestInit) =>
   fetch(`http://127.0.0.1:${daemon!.port}${path}`, init);
 
 describe("daemon", () => {
+  it("enqueues an adoption request and lists it, rejecting malformed ones", async () => {
+    const adoption = {
+      library: "gsap",
+      page: "/",
+      effectName: "Hero drift",
+      elementSelector: ".hero",
+      params: [
+        {
+          key: "duration",
+          type: "duration",
+          value: 2000,
+          var: "--mw-duration",
+          label: "Duration",
+          unit: "ms",
+        },
+      ],
+    };
+    const created = await request("/adopt", {
+      method: "POST",
+      headers: {
+        Origin: "http://localhost:3000",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(adoption),
+    });
+    expect(created.status).toBe(201);
+    const entry = (await created.json()) as { id: string; status: string };
+    expect(entry.status).toBe("pending");
+
+    const listed = (await (await request("/adoptions")).json()) as {
+      adoptions: { id: string; library: string }[];
+    };
+    expect(listed.adoptions).toHaveLength(1);
+    expect(listed.adoptions[0]!.library).toBe("gsap");
+
+    expect(
+      (
+        await request("/adopt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ library: "gsap" }),
+        })
+      ).status,
+    ).toBe(400);
+  });
+
   it("commits with the header origin, filters pending, and acknowledges", async () => {
     const created = await request("/commit", {
       method: "POST",

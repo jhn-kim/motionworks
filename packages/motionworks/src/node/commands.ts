@@ -1,5 +1,11 @@
-import type { JournalEntry, StatusResponse } from "../shared/index.js";
+import type {
+  AdoptionEntry,
+  JournalEntry,
+  StatusResponse,
+} from "../shared/index.js";
 
+import { readAdoptions, updateAdoption } from "./adoptions.js";
+import { buildAdoptInstruction } from "./agent.js";
 import { ackEntries, readJournal, readSelected } from "./journal.js";
 import { applyCssChanges } from "./css-write.js";
 
@@ -115,6 +121,37 @@ export async function pendingChanges(root: string): Promise<JournalEntry[]> {
   return (await readJournal(root)).filter(
     (entry) => entry.status !== "applied",
   );
+}
+
+export async function pendingAdoptions(
+  root: string,
+): Promise<AdoptionEntry[]> {
+  return (await readAdoptions(root)).filter(
+    (entry) => entry.status !== "applied",
+  );
+}
+
+export function formatAdoptions(
+  entries: AdoptionEntry[],
+  root: string,
+): string {
+  if (entries.length === 0) return "No pending adoptions.";
+  return entries
+    .map((entry) => `# ${entry.id}\n${buildAdoptInstruction(entry, root)}`)
+    .join("\n\n");
+}
+
+export async function runAdoptAck(
+  root: string,
+  id: string,
+): Promise<AdoptionEntry> {
+  const updated = await updateAdoption(root, id, {
+    status: "applied",
+    appliedBy: "cli",
+    appliedAt: Date.now(),
+  });
+  if (updated === null) throw new Error(`Unknown adoption id: ${id}`);
+  return updated;
 }
 
 export async function runRevert(root: string, id: string): Promise<string[]> {

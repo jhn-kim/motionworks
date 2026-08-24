@@ -3,10 +3,13 @@ import { flagValue, serveDir } from "./cli-args.js";
 import { isProjectRoot, runSetup } from "./setup.js";
 import { checkDrift } from "./drift.js";
 import {
+  formatAdoptions,
   formatChanges,
   formatStatus,
+  pendingAdoptions,
   pendingChanges,
   runAck,
+  runAdoptAck,
   runRevert,
 } from "./commands.js";
 import {
@@ -25,6 +28,8 @@ const HELP = `Usage:
   npx motionworks serve <dir> [--port N]                      Serve a static site and overlay.
   npx motionworks changes [--json|--brief]                    Show pending changes.
   npx motionworks ack <id>|--all                              Acknowledge changes.
+  npx motionworks adoptions                                   Show JS animations awaiting adoption.
+  npx motionworks adopt-ack <id>                              Mark an adoption done.
   npx motionworks status                                      Show daemon and selection.
   npx motionworks revert <id>                                 Revert an applied change.
   npx motionworks init [--yes] [--stanza-only] [--force]      Set up MotionWorks.
@@ -100,6 +105,18 @@ async function main(): Promise<void> {
     process.stdout.write(
       `Acknowledged ${acknowledged.length} change${acknowledged.length === 1 ? "" : "s"}.\n`,
     );
+    return;
+  }
+  if (command === "adoptions")
+    return void process.stdout.write(
+      `${formatAdoptions(await pendingAdoptions(process.cwd()), process.cwd())}\n`,
+    );
+  if (command === "adopt-ack") {
+    const id = args[1];
+    if (id === undefined)
+      throw new Error("Usage: motionworks adopt-ack <id>");
+    const acked = await runAdoptAck(process.cwd(), id);
+    process.stdout.write(`Adopted ${acked.effectName} (${acked.id}).\n`);
     return;
   }
   if (command === "status")

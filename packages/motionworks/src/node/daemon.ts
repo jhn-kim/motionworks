@@ -7,6 +7,8 @@ import {
 } from "node:http";
 
 import type {
+  AdoptionEntry,
+  AdoptionRequest,
   CommitRequest,
   JournalChange,
   JournalEntry,
@@ -31,6 +33,7 @@ import {
   writeSelected,
 } from "./journal.js";
 import { updateEntry } from "./journal.js";
+import { appendAdoption, readAdoptions } from "./adoptions.js";
 import { applyCssChanges, verifyCssChanges } from "./css-write.js";
 import { resolveOverlayBundle } from "./overlay-asset.js";
 import { createStaticHandler } from "./static-serve.js";
@@ -171,6 +174,30 @@ function isSelect(value: unknown): value is SelectRequest {
     typeof value.elementSelector === "string"
   );
 }
+const ADOPTION_LIBRARIES = new Set([
+  "gsap",
+  "framer-motion",
+  "react-spring",
+  "custom",
+]);
+function isAdoptionRequest(value: unknown): value is AdoptionRequest {
+  return (
+    object(value) &&
+    typeof value.library === "string" &&
+    ADOPTION_LIBRARIES.has(value.library) &&
+    typeof value.effectName === "string" &&
+    typeof value.elementSelector === "string" &&
+    typeof value.page === "string" &&
+    Array.isArray(value.params) &&
+    value.params.every(
+      (param) =>
+        object(param) &&
+        typeof param.key === "string" &&
+        typeof param.var === "string" &&
+        typeof param.label === "string",
+    )
+  );
+}
 
 export async function startDaemon(
   options: DaemonOptions,
@@ -213,6 +240,8 @@ export async function startDaemon(
     "/commit",
     "/select",
     "/ack",
+    "/adopt",
+    "/adoptions",
   ]);
   const server = createServer(async (req, res) => {
     if (!applyCors(req, res)) return;
@@ -403,6 +432,29 @@ export async function startDaemon(
               });
           }
         }
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/adoptions") {
+        sendJson(res, 200, {
+          adoptions: (await readAdoptions(options.projectRoot)).filter(
+            (entry) => entry.status !== "applied",
+          ),
+        });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/adopt") {
+        const value = await body(req);
+        if (!isAdoptionRequest(value))
+          return sendJson(res, 400, { error: "Invalid adoption request" });
+        const entry: AdoptionEntry = {
+          ...value,
+          id: randomUUID(),
+          createdAt: Date.now(),
+          origin: req.headers.origin ?? "",
+          status: "pending",
+        };
+        await appendAdoption(options.projectRoot, entry);
+        sendJson(res, 201, entry);
         return;
       }
       if (req.method === "POST" && url.pathname === "/select") {

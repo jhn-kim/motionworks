@@ -4,7 +4,16 @@ import { join } from "node:path";
 import { createServer } from "node:net";
 import type { JournalEntry } from "../shared/index.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { formatChanges, formatStatus, runAck, runRevert } from "./commands.js";
+import {
+  formatAdoptions,
+  formatChanges,
+  formatStatus,
+  pendingAdoptions,
+  runAck,
+  runAdoptAck,
+  runRevert,
+} from "./commands.js";
+import { appendAdoption } from "./adoptions.js";
 import { appendEntry, readJournal, writeSelected } from "./journal.js";
 import { startDaemon } from "./daemon.js";
 
@@ -125,4 +134,37 @@ describe("commands", () => {
 
   it("errors for an unknown revert id", async () =>
     expect(runRevert(root, "missing")).rejects.toThrow("Unknown change id"));
+
+  it("formats pending adoptions and acks them", async () => {
+    const adoption = {
+      id: "ad1",
+      createdAt: 1,
+      origin: "",
+      status: "pending" as const,
+      library: "gsap" as const,
+      page: "/",
+      effectName: "Hero drift",
+      elementSelector: ".hero",
+      params: [
+        {
+          key: "duration",
+          type: "duration" as const,
+          value: 2000,
+          var: "--mw-duration",
+          label: "Duration",
+          unit: "ms",
+        },
+      ],
+    };
+    await appendAdoption(root, adoption);
+    const text = formatAdoptions(await pendingAdoptions(root), root);
+    expect(text).toContain("Adopt this gsap animation");
+    expect(text).toContain("--mw-duration");
+
+    await runAdoptAck(root, "ad1");
+    expect(await pendingAdoptions(root)).toEqual([]);
+    await expect(runAdoptAck(root, "missing")).rejects.toThrow(
+      "Unknown adoption id",
+    );
+  });
 });
