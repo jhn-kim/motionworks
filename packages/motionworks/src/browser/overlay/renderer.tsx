@@ -331,6 +331,15 @@ const FAMILY_META: Record<
   },
 };
 
+// The chevron-row editors (path / easing / gradient) — the families that
+// carry one open it immediately, rather than waiting for the designer to
+// expand the collapsed row.
+const EDITOR_TYPES = new Set<ParameterType>([
+  "gradient",
+  "easing-curve",
+  "path",
+]);
+
 interface DynamicToolboxProps {
   selectedEffect: ReturnType<typeof useSessionState>["effects"][number] | null;
   closing?: boolean;
@@ -925,9 +934,21 @@ export function DynamicToolbox({
           setShowLayers(false);
           // Any open editor (easing / gradient / path) belongs to the
           // family panel it was opened from — switching or closing the
-          // family closes it too.
-          setOpenEditor(null);
-          setOpenFamily((f) => (f === family ? null : family));
+          // family closes it too. Opening a family that carries a chevron
+          // editor reveals that editor straight away, so the designer lands
+          // on the curve/stops/path instead of a collapsed row.
+          setOpenFamily((f) => {
+            const next = f === family ? null : family;
+            if (next === null) {
+              setOpenEditor(null);
+            } else {
+              const editorType = FAMILY_META[next].types.find(
+                (t) => EDITOR_TYPES.has(t) && entriesByType.has(t),
+              );
+              setOpenEditor(editorType ?? null);
+            }
+            return next;
+          });
         },
       });
     }

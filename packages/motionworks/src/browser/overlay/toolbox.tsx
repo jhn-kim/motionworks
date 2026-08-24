@@ -672,14 +672,16 @@ function ToolButton({
     : hover && !dimmed
       ? GLASS.fillHover
       : "transparent";
+  // Inactive icons sit noticeably dimmer than active ones so the difference
+  // reads at a glance; active jumps to full white on the brighter fill.
   const idleColor =
     !dimmed && tool.tint !== undefined
       ? tool.tint
-      : "rgba(255, 255, 255, 0.78)";
+      : "rgba(255, 255, 255, 0.58)";
   const color = visuallyActive
     ? (tool.tint ?? "rgb(255, 255, 255)")
     : hover && !dimmed
-      ? (tool.hoverColor ?? tool.tint ?? "rgba(255, 255, 255, 0.98)")
+      ? (tool.hoverColor ?? tool.tint ?? "rgb(255, 255, 255)")
       : idleColor;
   return (
     <button
@@ -728,13 +730,18 @@ function ToolButton({
         border: "none",
         padding: 0,
         background,
+        // A hairline inner ring on the active tile — with the brighter fill
+        // and full-white icon it separates cleanly from the dim inactive ones.
+        boxShadow: visuallyActive
+          ? "inset 0 0 0 1px rgba(255, 255, 255, 0.28)"
+          : "none",
         color,
         cursor: dimmed ? "default" : "pointer",
         opacity: !entered ? 0 : dimmed ? 0.4 : 1,
         transform: entered ? "scale(1)" : "scale(0.7)",
         transition: dimmed
           ? "color 140ms ease, opacity 260ms ease, transform 320ms cubic-bezier(0.32, 1.2, 0.35, 1)"
-          : "background 140ms ease, color 140ms ease, opacity 260ms ease, transform 320ms cubic-bezier(0.32, 1.2, 0.35, 1)",
+          : "background 140ms ease, box-shadow 140ms ease, color 140ms ease, opacity 260ms ease, transform 320ms cubic-bezier(0.32, 1.2, 0.35, 1)",
       }}
     >
       <span
