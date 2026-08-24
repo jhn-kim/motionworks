@@ -39,9 +39,16 @@ export function detectAgent(
   // name is the executable.
   const extensions =
     process.platform === "win32"
-      ? ["", ...(env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")].filter(
-          (ext, index, all) => ext === "" || all.indexOf(ext) === index,
-        )
+      ? [
+          "",
+          // PATHEXT is conventionally upper-case (`.CMD`) but the installed
+          // shim is usually lower-case (`claude.cmd`). Real Windows filesystems
+          // are case-insensitive so either matches, but a case-sensitive volume
+          // (WSL, CI) must try both forms explicitly (P2-12f).
+          ...(env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+            .split(";")
+            .flatMap((ext) => [ext, ext.toLowerCase()]),
+        ].filter((ext, index, all) => ext === "" || all.indexOf(ext) === index)
       : [""];
   for (const command of ["claude", "codex"] as const) {
     for (const directory of path.split(delimiter)) {
