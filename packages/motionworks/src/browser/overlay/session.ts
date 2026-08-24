@@ -30,6 +30,7 @@ import { DiffStore, type ReconcileResult } from "./diff-store.js";
 import { TypeOverrideStore } from "./type-overrides.js";
 
 const SELECTION_STORAGE_KEY = "motionworks:selectedEffectId";
+const APPLIED_STORAGE_KEY = "motionworks:appliedEntryIds";
 const SIMULATED_PRESS_HOLD_MS = 140;
 
 export interface OverlaySessionOptions {
@@ -67,6 +68,14 @@ export class OverlaySession {
   private applyingOwnChange = false;
   private stylesUnsub: (() => void) | null = null;
   private startedAt = 0;
+  // Ids of entries this tab applied (source writes). Persisted to sessionStorage
+  // so they survive an HMR remount / page reload: a just-applied entry then
+  // still counts as *this workflow's* history and keeps chaining a follow-up
+  // edit from the applied value, instead of looking like an unrelated
+  // earlier-session entry that the `startedAt` guard would drop (stale-baseline
+  // bug). Genuinely-old sessions (tab closed) clear sessionStorage, so their
+  // applied entries are still treated as history.
+  private readonly appliedIds = new Set<string>();
 
   constructor({ daemonUrl, debug = false }: OverlaySessionOptions) {
     this.bridge = getBridge();
@@ -82,6 +91,15 @@ export class OverlaySession {
 
   start(): void {
     this.startedAt = Date.now();
+    if (typeof sessionStorage !== "undefined") {
+      try {
+        const raw = sessionStorage.getItem(APPLIED_STORAGE_KEY);
+        if (raw !== null)
+          for (const id of JSON.parse(raw) as string[]) this.appliedIds.add(id);
+      } catch {
+        // Corrupt/unreadable storage is not worth failing startup over.
+      }
+    }
     this.diffs.hydrate(loadPersistedDiffs(this.diffScope));
     this.snapshotUnsub = this.state.subscribe(() => {
       this.cachedSnapshot = null;
@@ -109,8 +127,17 @@ export class OverlaySession {
         if (
           entry.status === "applied" &&
           previousStatuses.get(entry.id) !== "applied"
-        )
+        ) {
           this.bumpStylesheetLinks(entry);
+          // Remember our own source writes (direct CSS, or a verified agent
+          // write) so a follow-up edit still chains from the applied value after
+          // an HMR remount / reload.
+          if (
+            entry.appliedBy === "css" ||
+            (entry.appliedBy === "agent" && entry.files !== undefined)
+          )
+            this.rememberApplied(entry.id);
+        }
       }
       for (const effectId of new Set(entries.map((entry) => entry.effectId))) {
         this.reconcileEffect(effectId);
@@ -388,6 +415,21 @@ export class OverlaySession {
     return true;
   }
 
+  private rememberApplied(id: string): void {
+    if (this.appliedIds.has(id)) return;
+    this.appliedIds.add(id);
+    if (typeof sessionStorage !== "undefined") {
+      try {
+        sessionStorage.setItem(
+          APPLIED_STORAGE_KEY,
+          JSON.stringify([...this.appliedIds]),
+        );
+      } catch {
+        // Persistence is best-effort; the in-memory set still works this run.
+      }
+    }
+  }
+
   private latestJournalChange(
     effectId: string,
     param: string,
@@ -398,9 +440,15 @@ export class OverlaySession {
     for (const entry of this.entries) {
       if (entry.effectId !== effectId) continue;
       // An applied entry from an earlier browser session is history, not an
-      // active continuation. The fresh registration baseline already tells
-      // us what actually exists in source after a reload.
-      if (entry.status === "applied" && entry.createdAt < this.startedAt)
+      // active continuation — the fresh registration baseline already tells us
+      // what source holds after a reload. But an entry THIS tab applied (in
+      // appliedIds, persisted across an HMR remount) is our own recent work, so
+      // keep chaining a follow-up edit from its applied value.
+      if (
+        entry.status === "applied" &&
+        entry.createdAt < this.startedAt &&
+        !this.appliedIds.has(entry.id)
+      )
         continue;
       // Agent-applied entries created before source verification did not
       // record files and may represent a clean agent exit with no write.

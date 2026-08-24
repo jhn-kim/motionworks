@@ -217,6 +217,91 @@ describe("OverlaySession", () => {
     });
   });
 
+  const appliedEntry = (createdAt: number): JournalEntry => ({
+    id: "applied-1",
+    createdAt,
+    origin: "",
+    page: "/",
+    effectId,
+    effectName: "CardEntrance",
+    elementSelector: ".card",
+    changes: [
+      {
+        param: "radius",
+        type: "spatial-radius",
+        from: 100,
+        to: 160,
+        var: "--mw-radius",
+        fromCss: "100px",
+        toCss: "160px",
+      },
+    ],
+    status: "applied",
+    appliedBy: "css",
+    appliedAt: createdAt,
+    files: ["motion.css"],
+  });
+
+  it("chains a 2nd edit from a css-applied entry created during the session", async () => {
+    pendingEntries = [appliedEntry(Date.now())]; // after startedAt (normal flow)
+    await session.daemon.refresh();
+    session.manipulate(effectId, "radius", 180);
+    expect(session.commit(effectId)).toBe(true);
+    await vi.waitFor(() =>
+      expect(requests.filter((r) => r.url.endsWith("/commit"))).toHaveLength(1),
+    );
+    const body = JSON.parse(
+      String(requests.find((r) => r.url.endsWith("/commit"))!.init?.body),
+    );
+    expect(body.changes[0]).toMatchObject({ from: 160, fromCss: "160px" });
+  });
+
+  it("chains a css-applied entry this tab wrote even when it looks older (remount)", async () => {
+    // createdAt < startedAt (as after a remount), but this tab applied it, so it
+    // is tracked in appliedIds and still chains — the stale-baseline fix.
+    pendingEntries = [appliedEntry(1)];
+    await session.daemon.refresh();
+    session.manipulate(effectId, "radius", 180);
+    expect(session.commit(effectId)).toBe(true);
+    await vi.waitFor(() =>
+      expect(requests.filter((r) => r.url.endsWith("/commit"))).toHaveLength(1),
+    );
+    const body = JSON.parse(
+      String(requests.find((r) => r.url.endsWith("/commit"))!.init?.body),
+    );
+    expect(body.changes[0]).toMatchObject({ from: 160, fromCss: "160px" });
+  });
+
+  it("chains across an actual remount via sessionStorage", async () => {
+    // Session 1 applies the edit → its id is persisted to sessionStorage.
+    pendingEntries = [appliedEntry(Date.now())];
+    await session.daemon.refresh();
+
+    // Simulate an HMR remount: new session (new startedAt), fresh registration.
+    session.stop();
+    session = new OverlaySession({ daemonUrl: "http://127.0.0.1:59999" });
+    session.start();
+    getBridge().register(effectId, node, {
+      name: "CardEntrance",
+      params: { radius: { type: "spatial-radius" } },
+    });
+    await vi.waitFor(() => expect(session.isConnected()).toBe(true));
+
+    // The applied entry now looks old (createdAt < new startedAt) but its id was
+    // restored from sessionStorage, so a follow-up edit still chains from 160.
+    pendingEntries = [appliedEntry(1)];
+    await session.daemon.refresh();
+    session.manipulate(effectId, "radius", 180);
+    expect(session.commit(effectId)).toBe(true);
+    await vi.waitFor(() =>
+      expect(requests.filter((r) => r.url.endsWith("/commit"))).toHaveLength(1),
+    );
+    const body = JSON.parse(
+      String(requests.find((r) => r.url.endsWith("/commit"))!.init?.body),
+    );
+    expect(body.changes[0]).toMatchObject({ from: 160, fromCss: "160px" });
+  });
+
   it("does not chain from a legacy unverified agent success", async () => {
     pendingEntries = [
       {
