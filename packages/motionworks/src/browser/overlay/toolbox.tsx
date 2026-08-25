@@ -770,7 +770,11 @@ function ToolButton({
     >
       {PRESS_FLASH_IDS.has(tool.id) && clickCount > 0 ? (
         // Keyed on clickCount so the flash retriggers on every press.
-        <span key={`flash-${clickCount}`} className="ms-press-flash" aria-hidden />
+        <span
+          key={`flash-${clickCount}`}
+          className="ms-press-flash"
+          aria-hidden
+        />
       ) : null}
       <span
         key={clickCount}
@@ -848,7 +852,11 @@ export function HoverChip({
     >
       <div
         ref={contentRef}
-        style={{ width: "max-content", padding: "4px 9px", whiteSpace: "nowrap" }}
+        style={{
+          width: "max-content",
+          padding: "4px 9px",
+          whiteSpace: "nowrap",
+        }}
       >
         <div style={{ fontWeight: 600 }}>{label}</div>
         {hint !== undefined ? (

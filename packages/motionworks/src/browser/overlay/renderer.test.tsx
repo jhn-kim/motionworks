@@ -297,8 +297,7 @@ describe("editing verb availability", () => {
       }),
     );
 
-    document.head.innerHTML =
-      "<style>.headline{animation-delay:100ms}</style>";
+    document.head.innerHTML = "<style>.headline{animation-delay:100ms}</style>";
     const node = document.createElement("h1");
     node.className = "headline";
     document.body.appendChild(node);

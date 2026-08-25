@@ -178,8 +178,7 @@ describe("OverlaySession", () => {
               agent: { enabled: false, command: null, running: false },
             }),
           );
-        if (url.endsWith("/pending"))
-          return new Response(JSON.stringify([]));
+        if (url.endsWith("/pending")) return new Response(JSON.stringify([]));
         if (url.endsWith("/commit"))
           return new Response(
             JSON.stringify({ id: "applied-entry", status: "applied" }),
