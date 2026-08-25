@@ -27,6 +27,11 @@ export interface ReconcileResult {
 // the first reconciliation after hydration.
 export interface DiffStoreData {
   diffs: Record<string, Record<string, Diff>>;
+  // The last revision of each retained diff that already crossed the Apply
+  // boundary. It remains separate from `diffs`: the latter is still needed to
+  // keep the chosen value live until source catches up, while `submitted`
+  // prevents that committed value from masquerading as a new local decision.
+  submitted?: Record<string, Record<string, unknown>>;
 }
 
 // Stable empty set for the "no flags" branch — a fresh Set per call would
@@ -37,6 +42,7 @@ const EMPTY_STRING_SET: ReadonlySet<string> = new Set<string>();
 // the designer's intent (from → to) survives HMR and page reloads.
 export class DiffStore {
   private diffs = new Map<string, Map<string, Diff>>();
+  private submitted = new Map<string, Map<string, unknown>>();
   private unexpectedFlags = new Map<string, Set<string>>();
   private listeners = new Set<() => void>();
   // Monotonic counter so useSyncExternalStore consumers can subscribe with a
@@ -72,7 +78,12 @@ export class DiffStore {
     const existing = paramMap?.get(param);
     if (existing !== undefined) {
       if (deepEqual(existing.to, value)) return;
-      if (deepEqual(existing.from, value)) {
+      // Once a revision was submitted, its chosen value—not the stylesheet's
+      // still-stale baseline—is the start of the next editable revision. Going
+      // back to the source value is therefore a real new change, while going
+      // back to the submitted value merely cancels the follow-up edit.
+      const hasSubmitted = this.submitted.get(effectId)?.has(param) === true;
+      if (!hasSubmitted && deepEqual(existing.from, value)) {
         this.clearParam(effectId, param);
         return;
       }
@@ -94,6 +105,11 @@ export class DiffStore {
     if (paramMap === undefined) return false;
     const removed = paramMap.delete(param);
     if (paramMap.size === 0) this.diffs.delete(effectId);
+    const submitted = this.submitted.get(effectId);
+    if (submitted !== undefined) {
+      submitted.delete(param);
+      if (submitted.size === 0) this.submitted.delete(effectId);
+    }
     const flags = this.unexpectedFlags.get(effectId);
     if (flags !== undefined) {
       flags.delete(param);
@@ -105,8 +121,9 @@ export class DiffStore {
 
   clearEffect(effectId: string): boolean {
     const hadDiff = this.diffs.delete(effectId);
+    const hadSubmitted = this.submitted.delete(effectId);
     const hadFlags = this.unexpectedFlags.delete(effectId);
-    if (hadDiff || hadFlags) this.notify();
+    if (hadDiff || hadSubmitted || hadFlags) this.notify();
     return hadDiff;
   }
 
@@ -123,6 +140,61 @@ export class DiffStore {
     return paramMap !== undefined && paramMap.size > 0;
   }
 
+  // Returns only the revision the designer has not applied yet. A retained
+  // diff may contain a journaled value solely so live preview and source
+  // reconciliation survive HMR; that committed portion is deliberately hidden
+  // from Apply / Discard / Compare.
+  getUnsubmittedDiff(effectId: string): Record<string, Diff> {
+    const paramMap = this.diffs.get(effectId);
+    if (paramMap === undefined) return {};
+    const submitted = this.submitted.get(effectId);
+    const out: Record<string, Diff> = {};
+    for (const [param, diff] of paramMap) {
+      if (submitted?.has(param) !== true) {
+        out[param] = diff;
+        continue;
+      }
+      const from = submitted.get(param);
+      if (!deepEqual(from, diff.to)) out[param] = { from, to: diff.to };
+    }
+    return out;
+  }
+
+  hasUnsubmittedDiff(effectId: string): boolean {
+    return Object.keys(this.getUnsubmittedDiff(effectId)).length > 0;
+  }
+
+  hasSubmittedValue(effectId: string, param: string): boolean {
+    return this.submitted.get(effectId)?.has(param) === true;
+  }
+
+  getSubmittedValue(effectId: string, param: string): unknown {
+    return this.submitted.get(effectId)?.get(param);
+  }
+
+  // Advances the Apply boundary to the supplied revision. The current live
+  // diff may already contain a newer edit made while the request was in flight;
+  // in that case the submitted `to` becomes the new revision's `from`.
+  markSubmitted(effectId: string, revision: Record<string, Diff>): boolean {
+    const current = this.diffs.get(effectId);
+    if (current === undefined) return false;
+    let submitted = this.submitted.get(effectId);
+    let changed = false;
+    for (const [param, diff] of Object.entries(revision)) {
+      if (!current.has(param)) continue;
+      if (submitted === undefined) {
+        submitted = new Map();
+        this.submitted.set(effectId, submitted);
+      }
+      if (submitted.has(param) && deepEqual(submitted.get(param), diff.to))
+        continue;
+      submitted.set(param, diff.to);
+      changed = true;
+    }
+    if (changed) this.notify();
+    return changed;
+  }
+
   getFlags(effectId: string): ReadonlySet<string> {
     return this.unexpectedFlags.get(effectId) ?? EMPTY_STRING_SET;
   }
@@ -132,7 +204,14 @@ export class DiffStore {
     for (const [effectId, paramMap] of this.diffs.entries()) {
       if (paramMap.size > 0) diffs[effectId] = Object.fromEntries(paramMap);
     }
-    return { diffs };
+    const submitted: NonNullable<DiffStoreData["submitted"]> = {};
+    for (const [effectId, paramMap] of this.submitted.entries()) {
+      if (paramMap.size > 0) submitted[effectId] = Object.fromEntries(paramMap);
+    }
+    return {
+      diffs,
+      ...(Object.keys(submitted).length > 0 && { submitted }),
+    };
   }
 
   // Replace the store's contents with a persisted snapshot. Malformed input
@@ -163,6 +242,20 @@ export class DiffStore {
       if (paramMap.size > 0) next.set(effectId, paramMap);
     }
     this.diffs = next;
+    const nextSubmitted = new Map<string, Map<string, unknown>>();
+    if (typeof data.submitted === "object" && data.submitted !== null) {
+      for (const [effectId, params] of Object.entries(data.submitted)) {
+        if (typeof params !== "object" || params === null) continue;
+        const current = next.get(effectId);
+        if (current === undefined) continue;
+        const paramMap = new Map<string, unknown>();
+        for (const [param, value] of Object.entries(params)) {
+          if (current.has(param)) paramMap.set(param, value);
+        }
+        if (paramMap.size > 0) nextSubmitted.set(effectId, paramMap);
+      }
+    }
+    this.submitted = nextSubmitted;
     this.unexpectedFlags.clear();
     this.notify();
   }
@@ -183,17 +276,37 @@ export class DiffStore {
 
     let changed = false;
     let flagsForEffect = this.unexpectedFlags.get(effectId);
+    const submittedForEffect = this.submitted.get(effectId);
 
     for (const [param, diff] of Array.from(paramMap.entries())) {
       if (!Object.prototype.hasOwnProperty.call(newBaselines, param)) continue;
       const newBaseline = newBaselines[param];
       if (deepEqual(newBaseline, diff.to)) {
         paramMap.delete(param);
+        submittedForEffect?.delete(param);
         if (flagsForEffect !== undefined) flagsForEffect.delete(param);
         changed = true;
         result.params[param] = {
           status: "clean",
           from: diff.from,
+          to: diff.to,
+          newBaseline,
+        };
+      } else if (
+        submittedForEffect?.has(param) === true &&
+        deepEqual(newBaseline, submittedForEffect.get(param))
+      ) {
+        // Source caught up to the applied revision while the designer already
+        // has a newer local revision. Advance the retained baseline and keep
+        // only that newer edit active.
+        const submittedValue = submittedForEffect.get(param);
+        paramMap.set(param, { from: submittedValue, to: diff.to });
+        submittedForEffect.delete(param);
+        if (flagsForEffect !== undefined) flagsForEffect.delete(param);
+        changed = true;
+        result.params[param] = {
+          status: "preserved",
+          from: submittedValue,
           to: diff.to,
           newBaseline,
         };
@@ -224,6 +337,8 @@ export class DiffStore {
     }
 
     if (paramMap.size === 0) this.diffs.delete(effectId);
+    if (submittedForEffect !== undefined && submittedForEffect.size === 0)
+      this.submitted.delete(effectId);
     if (flagsForEffect !== undefined && flagsForEffect.size === 0) {
       this.unexpectedFlags.delete(effectId);
     }

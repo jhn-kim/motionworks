@@ -11,6 +11,7 @@ import type {
   AdoptionRequest,
   CommitRequest,
   JournalChange,
+  JournalEntry,
   SelectRequest,
   StatusResponse,
 } from "../shared/index.js";
@@ -243,6 +244,20 @@ export async function startDaemon(
     "/adopt",
     "/adoptions",
   ]);
+  // At most one agent handoff in flight per effect. Repeated applies on the
+  // same effect (common while dragging a slider whose value can't be written
+  // directly — e.g. timing in the `animation` shorthand) must not each queue an
+  // agent, or the serialized runner backs up into a long line of doomed,
+  // timing-out agents. The merged pending entry stays queued and is applied on
+  // the next commit once the in-flight agent for that effect clears.
+  const agentInFlight = new Set<string>();
+  const agentKeyOf = (entry: JournalEntry): string =>
+    JSON.stringify([
+      entry.origin,
+      entry.page,
+      entry.effectId,
+      entry.mwId ?? entry.elementSelector,
+    ]);
   const server = createServer(async (req, res) => {
     if (!applyCors(req, res)) return;
     if (!isLoopbackHost(req.headers.host)) {
@@ -359,7 +374,12 @@ export async function startDaemon(
           });
           sendJson(res, 201, applied);
         } else {
-          if (agent === null) {
+          const agentKey = agentKeyOf(entry);
+          if (agent === null || agentInFlight.has(agentKey)) {
+            // No agent, or one is already handling this effect. Leave the
+            // (merged) pending entry rather than queueing another agent — this
+            // is what stops repeated applies from piling up a line of doomed,
+            // timing-out agents on an un-writable value.
             const pending = await updateEntry(options.projectRoot, entry.id, {
               error: result.reason,
             });
@@ -374,6 +394,7 @@ export async function startDaemon(
             });
             if (working === null)
               throw new Error(`Journal entry disappeared: ${entry.id}`);
+            agentInFlight.add(agentKey);
             sendJson(res, 201, working);
             void agent
               .run(working)
@@ -429,7 +450,10 @@ export async function startDaemon(
                 options.log?.(
                   `agent completion handler failed for ${entry.id}: ${String(error)}`,
                 );
-              });
+              })
+              // Release the per-effect in-flight slot once this handoff settles,
+              // so a later genuine edit to the same effect can hand off again.
+              .finally(() => agentInFlight.delete(agentKey));
           }
         }
         return;

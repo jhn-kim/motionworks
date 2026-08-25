@@ -118,12 +118,33 @@ export class DaemonClient {
     return (await this.post("/select", req)) !== null;
   }
 
-  async commit(req: CommitRequest): Promise<{ id: string } | null> {
+  async commit(
+    req: CommitRequest,
+  ): Promise<
+    | (Pick<JournalEntry, "id"> &
+        Partial<Pick<JournalEntry, "status" | "error">>)
+    | null
+  > {
     const entry = await this.post("/commit", req);
     if (entry === null || typeof (entry as { id?: unknown }).id !== "string")
       return null;
     await this.pollPending(true);
-    return { id: (entry as { id: string }).id };
+    const candidate = entry as {
+      id: string;
+      status?: unknown;
+      error?: unknown;
+    };
+    return {
+      id: candidate.id,
+      ...(candidate.status === "pending" ||
+      candidate.status === "agent-working" ||
+      candidate.status === "applied"
+        ? { status: candidate.status }
+        : {}),
+      ...(typeof candidate.error === "string"
+        ? { error: candidate.error }
+        : {}),
+    };
   }
 
   async ack(id: string): Promise<boolean> {

@@ -52,5 +52,8 @@ review.md
 design/
 autoresearch/
 
+# local demo/recording tool (gifs & clips), not published
+demo/
+
 # packed tarballs (local testing)
 *.tgz

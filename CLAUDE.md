@@ -20,7 +20,7 @@ Then read whichever of the following apply to your task:
 - If a doc is wrong, outdated, or incomplete: do not edit it silently. Propose the specific change and wait for confirmation before writing.
 
 <!-- motionworks-instructions-start -->
-<!-- motionworks-version: 0.5.4 -->
+<!-- motionworks-version: 0.6.2 -->
 
-This project uses **MotionWorks** for motion design. Before you implement or refine motion, read [`MOTIONWORKS.md`](./MOTIONWORKS.md) — it defines the CSS-variable contract, overlay setup, and journal writeback rules. Whenever you scaffold or mount motion, start the daemon yourself in the background (`npx motionworks` from the project root) and confirm it with `npx motionworks status` before you report the work done — the overlay is inert until it runs. Before editing motion values, run `npx motionworks changes` and process entries oldest first.
+This project uses **MotionWorks** for motion design. Before you implement or refine motion, read [`MOTIONWORKS.md`](./MOTIONWORKS.md) — it defines the CSS-variable contract, overlay setup, and journal writeback rules. Setup (`npx motionworks init`) is a one-time human step; if `MOTIONWORKS.md` already exists it is done — do not re-run it, just read that guide and start the daemon. Whenever you scaffold or mount motion — or run/serve the app so the designer can view or refine its motion — start the daemon yourself in the background first (`npx motionworks` from the project root) and confirm it with `npx motionworks status` before you report the work done; the overlay is inert until it runs. Before editing motion values, run `npx motionworks changes` and process entries oldest first.
 <!-- motionworks-instructions-end -->

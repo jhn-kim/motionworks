@@ -131,6 +131,22 @@ describe("journal", () => {
     ]);
   });
 
+  it("does not merge a reused effect id across different element anchors", async () => {
+    await upsertPendingEntry(root, {
+      ...entry("first"),
+      mwId: "mw-first-node",
+    });
+    await upsertPendingEntry(root, {
+      ...entry("second"),
+      mwId: "mw-second-node",
+    });
+
+    expect((await readJournal(root)).map(({ id }) => id)).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
   it("starts a fresh pending chain when a stale source value does not connect", async () => {
     const first: JournalEntry = {
       ...entry("first"),

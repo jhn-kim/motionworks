@@ -85,6 +85,10 @@ const ICON_CLICK_ANIMATION: Record<string, string> = {
 const TRANSIENT_ACTION_DELAY_MS = 155;
 const TRANSIENT_ACTION_IDS = new Set(["apply", "garbage", "replay", "agent"]);
 
+// The committing verbs (Apply, discard X, Copy) get an extra press signal on
+// top of the icon nudge: a subtle background flash so the click reads clearly.
+const PRESS_FLASH_IDS = new Set(["apply", "garbage", "agent"]);
+
 const ICON_ANIMATION_CSS = `
 @keyframes ms-ico-spin { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
 @keyframes ms-ico-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
@@ -98,6 +102,25 @@ const ICON_ANIMATION_CSS = `
 .ms-ico-spin { animation: ms-ico-spin 380ms cubic-bezier(0.35, 0, 0.25, 1); }
 .ms-ico-pulse { animation: ms-ico-pulse 800ms ease-in-out infinite; }
 .ms-ico-nudge { animation: ms-ico-nudge 220ms cubic-bezier(0.2, 0.82, 0.25, 1); }
+/* Press feedback for the committing verbs: a flat highlight that eases in and
+   fades out smoothly — a clean, premium press signal. Layered over the button
+   so it never fights the inline background. */
+@keyframes ms-btn-press {
+  0% { opacity: 0; }
+  28% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.ms-press-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  pointer-events: none;
+  /* Rests invisible: the span stays mounted after a press, so without this it
+     would revert to the default opacity:1 and leave the flash stuck on. */
+  opacity: 0;
+  background: rgba(255, 255, 255, 0.18);
+  animation: ms-btn-press 340ms cubic-bezier(0.33, 0, 0.25, 1);
+}
 /* One unified settle-breath as the open morph lands: transform scales the
    whole box as a rigid shape, so both edges spring together — the fluid
    overshoot without two animated properties interfering. */
@@ -461,7 +484,9 @@ export function Toolbox({
           animation:
             "ms-open-settle 230ms cubic-bezier(0.33, 0.7, 0.4, 1) 295ms both",
           pointerEvents: "auto",
-          zIndex: 9998,
+          // The toolbar is always the very top surface (above the selection
+          // highlight at 9999); only transient chips/editors float above it.
+          zIndex: 10000,
           color: "rgba(255, 255, 255, 0.95)",
           fontFamily: "ui-sans-serif, -apple-system, system-ui, sans-serif",
           boxSizing: "border-box",
@@ -562,7 +587,7 @@ export function Toolbox({
               ? { bottom: window.innerHeight - flyoutPos.topEdge + 10 }
               : { top: flyoutPos.bottomEdge + 10 }),
             transform: "translateX(-50%)",
-            zIndex: 9999,
+            zIndex: 10001,
           }}
         >
           {flyout.node}
@@ -582,7 +607,7 @@ export function Toolbox({
                 ? "translateY(-50%)"
                 : "translate(-100%, -50%)",
             pointerEvents: "none",
-            zIndex: 9999,
+            zIndex: 10001,
           }}
         >
           {sidecar.node}
@@ -672,17 +697,15 @@ function ToolButton({
     : hover && !dimmed
       ? GLASS.fillHover
       : "transparent";
-  // Inactive icons sit noticeably dimmer than active ones so the difference
-  // reads at a glance; active jumps to full white on the brighter fill.
-  const idleColor =
-    !dimmed && tool.tint !== undefined
-      ? tool.tint
-      : "rgba(255, 255, 255, 0.58)";
+  // Enabled icons use their lit (formerly hover-only) colour by default so they
+  // read with enough contrast against the dimmed/disabled ones; hovering now
+  // only changes the background, never the icon colour. Dimmed tools stay grey.
+  const litColor = tool.hoverColor ?? tool.tint ?? "rgb(255, 255, 255)";
   const color = visuallyActive
     ? (tool.tint ?? "rgb(255, 255, 255)")
-    : hover && !dimmed
-      ? (tool.hoverColor ?? tool.tint ?? "rgb(255, 255, 255)")
-      : idleColor;
+    : dimmed
+      ? "rgba(255, 255, 255, 0.58)"
+      : litColor;
   return (
     <button
       ref={buttonRef}
@@ -722,6 +745,7 @@ function ToolButton({
       }}
       disabled={disabled}
       style={{
+        position: "relative",
         width: 34,
         height: 34,
         display: "grid",
@@ -744,6 +768,10 @@ function ToolButton({
           : "background 140ms ease, box-shadow 140ms ease, color 140ms ease, opacity 260ms ease, transform 320ms cubic-bezier(0.32, 1.2, 0.35, 1)",
       }}
     >
+      {PRESS_FLASH_IDS.has(tool.id) && clickCount > 0 ? (
+        // Keyed on clickCount so the flash retriggers on every press.
+        <span key={`flash-${clickCount}`} className="ms-press-flash" aria-hidden />
+      ) : null}
       <span
         key={clickCount}
         className={
@@ -778,8 +806,18 @@ export function HoverChip({
 }: HoverChipProps): React.JSX.Element {
   const OFFSET_X = 14;
   const OFFSET_Y = 12;
-  const APPROX_WIDTH = Math.max(60, label.length * 7 + 20);
-  const overflowsRight = x + OFFSET_X + APPROX_WIDTH > window.innerWidth - 8;
+  // Measure the content and drive the chip's width from it, so a label swap
+  // (e.g. "Apply changes" → "Applied") smoothly tweens the width instead of
+  // snapping. The inner box keeps its natural (max-content) size; the outer
+  // box animates toward it.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = contentRef.current;
+    if (el !== null) setWidth(el.offsetWidth);
+  }, [label, hint]);
+  const estWidth = width ?? Math.max(60, label.length * 7 + 20);
+  const overflowsRight = x + OFFSET_X + estWidth > window.innerWidth - 8;
   const chipX = overflowsRight ? x - OFFSET_X : x + OFFSET_X;
   return (
     <div
@@ -789,7 +827,8 @@ export function HoverChip({
         left: chipX,
         top: y - OFFSET_Y,
         transform: `translateY(-100%)${overflowsRight ? " translateX(-100%)" : ""}`,
-        padding: "4px 9px",
+        ...(width !== null ? { width } : {}),
+        overflow: "hidden",
         background: GLASS.background,
         backdropFilter: GLASS.backdrop,
         WebkitBackdropFilter: GLASS.backdrop,
@@ -801,17 +840,23 @@ export function HoverChip({
         lineHeight: 1.2,
         fontFamily: "ui-sans-serif, -apple-system, system-ui, sans-serif",
         letterSpacing: 0.01,
-        whiteSpace: "nowrap",
         pointerEvents: "none",
-        zIndex: 9999,
+        // Above the toolbar (10000) so the chip is never buried by it.
+        zIndex: 10001,
+        transition: "width 200ms cubic-bezier(0.22, 0.61, 0.36, 1)",
       }}
     >
-      <div style={{ fontWeight: 600 }}>{label}</div>
-      {hint !== undefined ? (
-        <div style={{ color: "rgba(255, 255, 255, 0.62)", marginTop: 1 }}>
-          {hint}
-        </div>
-      ) : null}
+      <div
+        ref={contentRef}
+        style={{ width: "max-content", padding: "4px 9px", whiteSpace: "nowrap" }}
+      >
+        <div style={{ fontWeight: 600 }}>{label}</div>
+        {hint !== undefined ? (
+          <div style={{ color: "rgba(255, 255, 255, 0.62)", marginTop: 1 }}>
+            {hint}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1160,7 +1205,11 @@ export const ICONS = {
   // A mouse cursor — Select mode: clicks pick an element to edit.
   select: (
     <svg {...iconProps} aria-hidden>
-      <path d="M5 3l0 13 3.3-3.4 2 4.6 2.1-.9-2-4.5 4.9-.1L5 3z" />
+      {/* Nudge only the drawn cursor ~1px right (viewBox is 20u @ 18px, so
+          1.1u ≈ 1px); the <svg> container stays fixed in the toolbar. */}
+      <g transform="translate(1.1 0)">
+        <path d="M5 3l0 13 3.3-3.4 2 4.6 2.1-.9-2-4.5 4.9-.1L5 3z" />
+      </g>
     </svg>
   ),
   // The mark: a keyframe echo — a solid keyframe diamond (the universal

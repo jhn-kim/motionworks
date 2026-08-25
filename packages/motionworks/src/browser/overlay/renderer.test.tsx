@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -40,9 +41,7 @@ describe("editing verb availability", () => {
         hasCommitDelta: false,
         editing: false,
         appliedMarker: false,
-        committedDiff: false,
-        pendingApply: true,
-        entryApplied: false,
+        commitInFlight: false,
       }),
     ).toEqual({ visible: false, localLive: false, applyLive: false });
   });
@@ -56,9 +55,7 @@ describe("editing verb availability", () => {
         hasCommitDelta: false,
         editing: true,
         appliedMarker: false,
-        committedDiff: false,
-        pendingApply: true,
-        entryApplied: false,
+        commitInFlight: false,
       }),
     ).toEqual({ visible: true, localLive: false, applyLive: false });
   });
@@ -72,9 +69,7 @@ describe("editing verb availability", () => {
         hasCommitDelta: true,
         editing: false,
         appliedMarker: false,
-        committedDiff: false,
-        pendingApply: true,
-        entryApplied: false,
+        commitInFlight: false,
       }),
     ).toEqual({ visible: true, localLive: true, applyLive: true });
   });
@@ -252,6 +247,131 @@ describe("editing verb availability", () => {
     });
 
     getBridge().unregister(childEffectId, child);
+    getBridge().unregister(effectId, node);
+    session.stop();
+    node.remove();
+  });
+
+  it("deactivates Compare, Discard, and Apply when the revision becomes a copy prompt", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe(): void {}
+        disconnect(): void {}
+      },
+    );
+    let journal: Array<Record<string, unknown>> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/status"))
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              port: 59999,
+              projectRoot: "/tmp",
+              pending: journal.length,
+              agent: { enabled: false, command: null, running: false },
+            }),
+          );
+        if (url.endsWith("/pending"))
+          return new Response(JSON.stringify(journal));
+        if (url.endsWith("/commit")) {
+          const body = JSON.parse(String(init?.body)) as Record<
+            string,
+            unknown
+          >;
+          const entry = {
+            ...body,
+            id: "manual-entry",
+            createdAt: Date.now(),
+            origin: location.origin,
+            status: "pending",
+            error: "Direct CSS write skipped",
+          };
+          journal = [entry];
+          return new Response(JSON.stringify(entry), { status: 201 });
+        }
+        return new Response(JSON.stringify({ acknowledged: [] }));
+      }),
+    );
+
+    document.head.innerHTML =
+      "<style>.headline{animation-delay:100ms}</style>";
+    const node = document.createElement("h1");
+    node.className = "headline";
+    document.body.appendChild(node);
+    const effectId = "reveal#1";
+    const session = new OverlaySession({
+      daemonUrl: "http://127.0.0.1:59999",
+    });
+    session.start();
+    getBridge().register(effectId, node, {
+      name: "Reveal",
+      params: {
+        delay: {
+          type: "duration",
+          var: "animation-delay",
+          unit: "ms",
+        },
+      },
+      capabilities: { replay: true },
+    });
+    const effect = session.state.getEffect(effectId)!;
+    render(
+      <div data-motionworks-overlay="">
+        <OverlaySessionContext.Provider value={session}>
+          <DynamicToolbox
+            selectedEffect={effect}
+            dock="bottom"
+            onDockChange={() => undefined}
+            onClose={() => undefined}
+          />
+        </OverlaySessionContext.Provider>
+      </div>,
+    );
+
+    act(() => session.manipulate(effectId, "delay", 160));
+    const apply = await screen.findByRole("button", { name: "Apply changes" });
+    expect((apply as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(apply);
+
+    const prompt = await screen.findByRole("button", {
+      name: "Apply requires prompt copy",
+    });
+    expect(prompt.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Compare — make a change first",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Discard — make a change first",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", {
+        name: "Copy prompt for your coding agent",
+      }),
+    ).toBeTruthy();
+
+    act(() => session.manipulate(effectId, "delay", 180));
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "Apply changes",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+
     getBridge().unregister(effectId, node);
     session.stop();
     node.remove();

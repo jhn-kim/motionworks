@@ -135,7 +135,15 @@ export async function appendEntry(
 }
 
 function pendingKey(entry: JournalEntry): string {
-  return JSON.stringify([entry.origin, entry.page, entry.effectId]);
+  // Effect ids are allocated by live DOM order and can be reused by another
+  // element after HMR/navigation. Never fold that new element's Apply into an
+  // older prompt merely because both happened to be `card#1`.
+  return JSON.stringify([
+    entry.origin,
+    entry.page,
+    entry.effectId,
+    entry.mwId ?? entry.elementSelector,
+  ]);
 }
 
 function mergeChanges(entries: JournalEntry[]): JournalChange[] {

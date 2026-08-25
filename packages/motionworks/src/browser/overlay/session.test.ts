@@ -164,6 +164,41 @@ describe("OverlaySession", () => {
     ).toHaveLength(1);
   });
 
+  it("retires a revision immediately when direct write returns applied", async () => {
+    vi.mocked(fetch).mockImplementation(
+      async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith("/status"))
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              port: 59999,
+              projectRoot: "/tmp",
+              pending: 0,
+              agent: { enabled: false, command: null, running: false },
+            }),
+          );
+        if (url.endsWith("/pending"))
+          return new Response(JSON.stringify([]));
+        if (url.endsWith("/commit"))
+          return new Response(
+            JSON.stringify({ id: "applied-entry", status: "applied" }),
+            { status: 201 },
+          );
+        return new Response(JSON.stringify({ acknowledged: [] }));
+      },
+    );
+
+    session.manipulate(effectId, "radius", 160);
+    expect(session.commit(effectId)).toBe(true);
+    await vi.waitFor(() =>
+      expect(session.getCommitOutcome(effectId)).toBe("applied"),
+    );
+    expect(session.diffs.hasDiff(effectId)).toBe(true);
+    expect(session.diffs.hasUnsubmittedDiff(effectId)).toBe(false);
+    expect(session.hasCommitDelta(effectId)).toBe(false);
+  });
+
   it("chains repeated applies from the latest queued value", async () => {
     session.manipulate(effectId, "radius", 160);
     expect(session.commit(effectId)).toBe(true);
@@ -218,6 +253,99 @@ describe("OverlaySession", () => {
       fromCss: "160px",
       toCss: "180px",
     });
+  });
+
+  it("keeps a prompt-bound revision out of the editable toolbar state", async () => {
+    session.manipulate(effectId, "radius", 160);
+    expect(session.hasCommitDelta(effectId)).toBe(true);
+    expect(session.commit(effectId)).toBe(true);
+    await vi.waitFor(() =>
+      expect(session.hasCommitDelta(effectId)).toBe(false),
+    );
+
+    pendingEntries = [
+      {
+        id: "entry-1",
+        createdAt: Date.now(),
+        origin: location.origin,
+        page: location.href,
+        effectId,
+        effectName: "CardEntrance",
+        elementSelector: ".card",
+        mwId: node.dataset.mwId,
+        changes: [
+          {
+            param: "radius",
+            type: "spatial-radius",
+            from: 100,
+            to: 160,
+            var: "--mw-radius",
+            fromCss: "100px",
+            toCss: "160px",
+          },
+        ],
+        status: "pending",
+        error: "Direct CSS write skipped",
+      },
+    ];
+    await session.daemon.refresh();
+
+    expect(session.getCommitOutcome(effectId)).toBe("prompt");
+    expect(session.diffs.hasDiff(effectId)).toBe(true); // retained for preview
+    expect(session.diffs.hasUnsubmittedDiff(effectId)).toBe(false);
+    expect(session.hasCommitDelta(effectId)).toBe(false);
+    expect(session.commit(effectId)).toBe(false);
+
+    // Even a direct call through a stale event handler cannot discard the
+    // journaled value. There is no unsubmitted revision for X to act on.
+    session.discard(effectId);
+    expect(node.style.getPropertyValue("--mw-radius")).toBe("160px");
+    expect(session.diffs.getDiff(effectId)).toEqual({
+      radius: { from: 100, to: 160 },
+    });
+
+    // A real subsequent edit creates one—and Discard now cancels only that
+    // follow-up, returning to the already-submitted 160 rather than source 100.
+    session.manipulate(effectId, "radius", 180);
+    expect(session.hasCommitDelta(effectId)).toBe(true);
+    expect(session.diffs.getUnsubmittedDiff(effectId)).toEqual({
+      radius: { from: 160, to: 180 },
+    });
+    session.discard(effectId);
+    expect(node.style.getPropertyValue("--mw-radius")).toBe("160px");
+    expect(session.hasCommitDelta(effectId)).toBe(false);
+  });
+
+  it("does not bind a reused effect id to another element's stale journal entry", async () => {
+    session.manipulate(effectId, "radius", 160);
+    pendingEntries = [
+      {
+        id: "stale-other-element",
+        createdAt: 1,
+        origin: location.origin,
+        page: location.href,
+        effectId,
+        effectName: "CardEntrance",
+        elementSelector: ".card",
+        mwId: "mw-some-other-node",
+        changes: [
+          {
+            param: "radius",
+            type: "spatial-radius",
+            from: 100,
+            to: 160,
+          },
+        ],
+        status: "pending",
+        error: "Old prompt",
+      },
+    ];
+
+    await session.daemon.refresh();
+
+    expect(session.diffs.hasUnsubmittedDiff(effectId)).toBe(true);
+    expect(session.hasCommitDelta(effectId)).toBe(true);
+    expect(session.isCommitPending(effectId)).toBe(false);
   });
 
   const appliedEntry = (createdAt: number): JournalEntry => ({

@@ -254,7 +254,8 @@ export function ColorPickerPopover({
         position: "fixed",
         left,
         top,
-        zIndex: 10000,
+        // Editor modal sits above the toolbar (10000).
+        zIndex: 10001,
         display: "flex",
         flexDirection: "column",
         gap: COLOR_PICKER.gap,

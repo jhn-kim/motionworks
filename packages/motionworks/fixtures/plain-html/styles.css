@@ -247,7 +247,7 @@ main {
 
 .path-stage {
   --mw-runner-path: path("M -68.2344 -2.1484 C -44.901 -30.4818 220.4857 164.0239 244.4375 124");
-  --mw-runner-duration: 1344.32ms;
+  --mw-runner-duration: 3421.22ms;
 
   position: absolute;
   top: 85px;

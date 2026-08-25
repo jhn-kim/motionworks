@@ -193,6 +193,68 @@ describe("CSS animation auto-detection", () => {
     stop();
   });
 
+  it("journals non-MotionWorks timing variables through an allowed longhand", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("CSSAnimation", FakeCssAnimation);
+    vi.stubGlobal("KeyframeEffect", FakeKeyframeEffect);
+    const state = new MotionWorksStateManager();
+    getBridge().attach(state);
+    document.head.innerHTML =
+      "<style>.headline{--d:.12s;animation:reveal 1s ease var(--d)}</style>";
+    const node = document.createElement("h1");
+    node.className = "headline";
+    document.body.appendChild(node);
+    const animation = new FakeCssAnimation(
+      "reveal",
+      new FakeKeyframeEffect(node, {
+        duration: 1000,
+        delay: 120,
+        easing: "ease",
+      }),
+    );
+    Object.defineProperty(document, "getAnimations", {
+      configurable: true,
+      value: () => [animation] as unknown as Animation[],
+    });
+
+    const stop = startAutoDetect(10);
+    expect(state.getEffect("reveal#1")?.params.delay?.var).toBe(
+      "animation-delay",
+    );
+    stop();
+    document.head.innerHTML = "";
+  });
+
+  it("keeps an auto-detected --mw timing variable directly writable", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("CSSAnimation", FakeCssAnimation);
+    vi.stubGlobal("KeyframeEffect", FakeKeyframeEffect);
+    const state = new MotionWorksStateManager();
+    getBridge().attach(state);
+    document.head.innerHTML =
+      "<style>.headline{--mw-delay:.12s;animation:reveal 1s ease var(--mw-delay)}</style>";
+    const node = document.createElement("h1");
+    node.className = "headline";
+    document.body.appendChild(node);
+    const animation = new FakeCssAnimation(
+      "reveal",
+      new FakeKeyframeEffect(node, {
+        duration: 1000,
+        delay: 120,
+        easing: "ease",
+      }),
+    );
+    Object.defineProperty(document, "getAnimations", {
+      configurable: true,
+      value: () => [animation] as unknown as Animation[],
+    });
+
+    const stop = startAutoDetect(10);
+    expect(state.getEffect("reveal#1")?.params.delay?.var).toBe("--mw-delay");
+    stop();
+    document.head.innerHTML = "";
+  });
+
   it("registers an entrance animation immediately on animationstart (F6)", () => {
     vi.useFakeTimers();
     vi.stubGlobal("CSSAnimation", FakeCssAnimation);

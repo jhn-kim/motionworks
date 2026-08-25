@@ -64,6 +64,43 @@ describe("DiffStore", () => {
         spring: { from: baseline, to: changed },
       });
     });
+
+    it("does not treat a submitted revision as a fresh local change", () => {
+      const store = new DiffStore();
+      store.recordChange("effect-a", "radius", 100, 160);
+      store.markSubmitted("effect-a", {
+        radius: { from: 100, to: 160 },
+      });
+
+      expect(store.hasDiff("effect-a")).toBe(true);
+      expect(store.hasUnsubmittedDiff("effect-a")).toBe(false);
+      expect(store.getUnsubmittedDiff("effect-a")).toEqual({});
+    });
+
+    it("starts a post-Apply revision at the submitted value", () => {
+      const store = new DiffStore();
+      store.recordChange("effect-a", "radius", 100, 160);
+      store.markSubmitted("effect-a", {
+        radius: { from: 100, to: 160 },
+      });
+
+      store.recordChange("effect-a", "radius", 160, 180);
+      expect(store.getDiff("effect-a")).toEqual({
+        radius: { from: 100, to: 180 },
+      });
+      expect(store.getUnsubmittedDiff("effect-a")).toEqual({
+        radius: { from: 160, to: 180 },
+      });
+
+      // Returning to source is a real follow-up change; returning to the last
+      // submitted value is what cancels that follow-up revision.
+      store.recordChange("effect-a", "radius", 180, 100);
+      expect(store.getUnsubmittedDiff("effect-a")).toEqual({
+        radius: { from: 160, to: 100 },
+      });
+      store.recordChange("effect-a", "radius", 100, 160);
+      expect(store.hasUnsubmittedDiff("effect-a")).toBe(false);
+    });
   });
 
   describe("reconcile — matrix branches", () => {
@@ -135,6 +172,25 @@ describe("DiffStore", () => {
         strength: { from: 0.5, to: 0.9 },
       });
     });
+
+    it("advances to a submitted source value without losing a newer edit", () => {
+      const store = new DiffStore();
+      store.recordChange("effect-a", "radius", 100, 160);
+      store.markSubmitted("effect-a", {
+        radius: { from: 100, to: 160 },
+      });
+      store.recordChange("effect-a", "radius", 160, 180);
+
+      const result = store.reconcile("effect-a", { radius: 160 });
+
+      expect(result.params.radius?.status).toBe("preserved");
+      expect(store.getDiff("effect-a")).toEqual({
+        radius: { from: 160, to: 180 },
+      });
+      expect(store.getUnsubmittedDiff("effect-a")).toEqual({
+        radius: { from: 160, to: 180 },
+      });
+    });
   });
 
   describe("clear operations", () => {
@@ -152,6 +208,9 @@ describe("DiffStore", () => {
     const original = new DiffStore();
     original.recordChange("effect-a", "radius", 100, 165);
     original.recordChange("effect-b", "strength", 0.5, 0.8);
+    original.markSubmitted("effect-a", {
+      radius: { from: 100, to: 165 },
+    });
 
     const hydrated = new DiffStore();
     hydrated.hydrate(original.toJSON());

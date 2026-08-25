@@ -158,9 +158,14 @@ export function FamilySliderPanel({
     >
       <style data-motionworks-overlay-style="">{PANEL_CSS}</style>
       {hover !== null && hoverPos !== null
-        ? // Portaled to the body: the glass chip's backdrop-filter makes it
-          // the containing block for fixed descendants, which would pin the
-          // chip inside the toolbar and clip it under overflow: hidden.
+        ? // Portal out of the toolbar (whose backdrop-filter is a containing
+          // block + overflow clip) so the chip isn't pinned inside/under it.
+          // Target the overlay root, not document.body: the root is an isolated
+          // stacking context at a near-max z-index, so a body portal would sit
+          // far below the whole overlay and be buried by the toolbar. Inside the
+          // root, the chip's z-index (10001) clears the toolbar (10000) and it
+          // renders in the same context as the toolbar's own hover chip, so
+          // both read identically.
           createPortal(
             <HoverChip
               label={hover.label}
@@ -168,7 +173,8 @@ export function FamilySliderPanel({
               x={hoverPos.x}
               y={hoverPos.y}
             />,
-            document.body,
+            document.querySelector("[data-motionworks-overlay]") ??
+              document.body,
           )
         : null}
       {items.map((item) => {

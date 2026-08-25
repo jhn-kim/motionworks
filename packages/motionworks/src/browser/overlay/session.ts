@@ -30,7 +30,7 @@ import {
   loadPersistedDiffs,
   persistDiffs,
 } from "./diff-persistence.js";
-import { DiffStore, type ReconcileResult } from "./diff-store.js";
+import { DiffStore, type Diff, type ReconcileResult } from "./diff-store.js";
 import { TypeOverrideStore } from "./type-overrides.js";
 
 const SELECTION_STORAGE_KEY = "motionworks:selectedEffectId";
@@ -40,6 +40,20 @@ const SIMULATED_PRESS_HOLD_MS = 140;
 export interface OverlaySessionOptions {
   daemonUrl: string;
   debug?: boolean;
+}
+
+type CommitOutcome = "in-flight" | "prompt" | "applied";
+
+interface CommitAttempt {
+  diff: Record<string, Diff>;
+  corrections: TypeCorrection[];
+  signature: string;
+}
+
+interface OwnCommit {
+  id: string;
+  status?: JournalEntry["status"];
+  error?: string;
 }
 
 export class OverlaySession {
@@ -59,13 +73,21 @@ export class OverlaySession {
   private pendingUnsub: (() => void) | null = null;
   private knownEffectIds = new Set<string>();
   private connected = false;
+  // Whether we've completed at least one connection this session. The first
+  // connect loads a fresh CSSOM already; only later reconnects need a resync.
+  private hasConnectedBefore = false;
   private connectionListeners = new Set<(connected: boolean) => void>();
   private cachedSnapshot: MotionWorksStateSnapshot | null = null;
   private entries: JournalEntry[] = [];
   private pendingCorrections = new Map<string, Map<string, TypeCorrection>>();
   private pendingListeners = new Set<() => void>();
   private pendingVersion = 0;
-  private committing = new Set<string>();
+  // The exact local revision crossing the HTTP boundary. Keeping the snapshot
+  // explicit prevents a journal poll (especially an old entry with a reused
+  // effect id) from deciding whether toolbar verbs are live.
+  private committing = new Map<string, CommitAttempt>();
+  private ownCommits = new Map<string, OwnCommit>();
+  private submittedCorrections = new Map<string, Map<string, ParameterType>>();
   // Effects currently held at their original value by compare mode (P2-3).
   private held = new Set<string>();
   private compareListeners = new Set<() => void>();
@@ -126,6 +148,7 @@ export class OverlaySession {
         this.entries.map((entry) => [entry.id, entry.status]),
       );
       this.entries = entries;
+      this.adoptJournaledDiffs();
       this.notifyPending();
       for (const entry of entries) {
         if (
@@ -177,6 +200,8 @@ export class OverlaySession {
     this.stylesUnsub = null;
     this.knownEffectIds.clear();
     this.committing.clear();
+    this.ownCommits.clear();
+    this.submittedCorrections.clear();
     this.connectionListeners.clear();
     this.cachedSnapshot = null;
   }
@@ -374,7 +399,9 @@ export class OverlaySession {
   holdBaseline(effectId: string, hold: boolean): void {
     if (hold) this.held.add(effectId);
     else this.held.delete(effectId);
-    for (const [param, diff] of Object.entries(this.diffs.getDiff(effectId))) {
+    for (const [param, diff] of Object.entries(
+      this.diffs.getUnsubmittedDiff(effectId),
+    )) {
       for (const target of this.matchingTargets(effectId, param)) {
         applyLive(
           target.node,
@@ -401,35 +428,34 @@ export class OverlaySession {
     if (this.committing.has(effectId)) return false;
     const effect = this.state.getEffect(effectId);
     if (effect === undefined) return false;
+    const revision = this.diffs.getUnsubmittedDiff(effectId);
     const corrections = [
       ...(this.pendingCorrections.get(effectId)?.values() ?? []),
     ];
     const node = this.bridge.getNode(effectId);
-    const changes = Object.entries(this.diffs.getDiff(effectId)).flatMap(
-      ([param, diff]) => {
-        const spec = effect.params[param];
-        if (spec === undefined || !spec.bound) return [];
-        const queued = this.latestJournalChange(effectId, param, diff.from);
-        if (queued !== undefined && deepEqual(queued.to, diff.to)) return [];
-        const from = queued?.to ?? diff.from;
-        const type = this.resolvedType(effectId, param) ?? spec.type;
-        // Resolve the declaring rule once, not twice per change (P2-13).
-        const rule =
-          node === undefined ? undefined : findDeclaringRule(node, spec.var);
-        return [
-          {
-            param,
-            type,
-            from,
-            to: diff.to,
-            var: spec.var,
-            fromCss: encodeCssValue(type, from, spec.cssUnit),
-            toCss: encodeCssValue(type, diff.to, spec.cssUnit),
-            ...(rule !== undefined && { rule }),
-          },
-        ];
-      },
-    );
+    const changes = Object.entries(revision).flatMap(([param, diff]) => {
+      const spec = effect.params[param];
+      if (spec === undefined || !spec.bound) return [];
+      const queued = this.latestJournalChange(effectId, param, diff.from, true);
+      if (queued !== undefined && deepEqual(queued.to, diff.to)) return [];
+      const from = queued?.to ?? diff.from;
+      const type = this.resolvedType(effectId, param) ?? spec.type;
+      // Resolve the declaring rule once, not twice per change (P2-13).
+      const rule =
+        node === undefined ? undefined : findDeclaringRule(node, spec.var);
+      return [
+        {
+          param,
+          type,
+          from,
+          to: diff.to,
+          var: spec.var,
+          fromCss: encodeCssValue(type, from, spec.cssUnit),
+          toCss: encodeCssValue(type, diff.to, spec.cssUnit),
+          ...(rule !== undefined && { rule }),
+        },
+      ];
+    });
     if (changes.length === 0 && corrections.length === 0) return false;
     const request: CommitRequest = {
       page: typeof location === "undefined" ? "" : location.href,
@@ -440,14 +466,79 @@ export class OverlaySession {
       changes,
       ...(corrections.length > 0 && { typeCorrections: corrections }),
     };
-    this.committing.add(effectId);
+    const attempt: CommitAttempt = {
+      diff: revision,
+      corrections,
+      signature: this.revisionSignature(revision, corrections),
+    };
+    this.committing.set(effectId, attempt);
     this.notifyPending();
     void this.daemon.commit(request).then((result) => {
+      if (result !== null) {
+        this.diffs.markSubmitted(effectId, attempt.diff);
+        this.markSubmittedCorrections(effectId, attempt.corrections);
+        this.removeCommittedCorrections(effectId, attempt.corrections);
+        this.ownCommits.set(effectId, {
+          id: result.id,
+          ...(result.status !== undefined && { status: result.status }),
+          ...(result.error !== undefined && { error: result.error }),
+        });
+      }
       this.committing.delete(effectId);
-      if (result !== null) this.pendingCorrections.delete(effectId);
       this.notifyPending();
     });
     return true;
+  }
+
+  private revisionSignature(
+    diff: Record<string, Diff>,
+    corrections: TypeCorrection[],
+  ): string {
+    return JSON.stringify([
+      Object.entries(diff).sort(([a], [b]) => a.localeCompare(b)),
+      corrections
+        .map(({ paramKey, correctedType, correctedAt }) => [
+          paramKey,
+          correctedType,
+          correctedAt,
+        ])
+        .sort(([a], [b]) => String(a).localeCompare(String(b))),
+    ]);
+  }
+
+  private currentRevisionSignature(effectId: string): string {
+    return this.revisionSignature(this.diffs.getUnsubmittedDiff(effectId), [
+      ...(this.pendingCorrections.get(effectId)?.values() ?? []),
+    ]);
+  }
+
+  private markSubmittedCorrections(
+    effectId: string,
+    corrections: TypeCorrection[],
+  ): void {
+    if (corrections.length === 0) return;
+    let submitted = this.submittedCorrections.get(effectId);
+    if (submitted === undefined) {
+      submitted = new Map();
+      this.submittedCorrections.set(effectId, submitted);
+    }
+    for (const correction of corrections)
+      submitted.set(correction.paramKey, correction.correctedType);
+  }
+
+  private removeCommittedCorrections(
+    effectId: string,
+    corrections: TypeCorrection[],
+  ): void {
+    const pending = this.pendingCorrections.get(effectId);
+    if (pending === undefined) return;
+    for (const correction of corrections) {
+      if (
+        pending.get(correction.paramKey)?.correctedAt === correction.correctedAt
+      )
+        pending.delete(correction.paramKey);
+    }
+    if (pending.size === 0) this.pendingCorrections.delete(effectId);
   }
 
   private rememberApplied(id: string): void {
@@ -469,11 +560,25 @@ export class OverlaySession {
     effectId: string,
     param: string,
     baseline: unknown,
+    // When true, skip entries that ERRORED without reaching source — a failed
+    // direct write / copy-prompt entry. Chaining such an entry's `to` as the
+    // next `from` would make every later commit miss the declaration and cascade
+    // into copy-prompts. A clean in-flight pending/agent-working entry (no error)
+    // is still chained so rapid repeated applies coalesce from the latest queued
+    // value. Used for a commit's `from`; hasCommitDelta leaves this false so a
+    // queued-but-not-yet-written intent still counts as "already represented".
+    skipUnwritten = false,
   ): JournalEntry["changes"][number] | undefined {
     let cursor = baseline;
     let latest: JournalEntry["changes"][number] | undefined;
     for (const entry of this.entries) {
-      if (entry.effectId !== effectId) continue;
+      if (!this.entryBelongsToEffect(entry, effectId)) continue;
+      if (
+        skipUnwritten &&
+        entry.status !== "applied" &&
+        entry.error !== undefined
+      )
+        continue;
       // An applied entry from an earlier browser session is history, not an
       // active continuation — the fresh registration baseline already tells us
       // what source holds after a reload. But an entry THIS tab applied (in
@@ -504,12 +609,72 @@ export class OverlaySession {
     return latest;
   }
 
-  hasCommitDelta(effectId: string): boolean {
-    for (const [param, diff] of Object.entries(this.diffs.getDiff(effectId))) {
-      const queued = this.latestJournalChange(effectId, param, diff.from);
-      if (queued === undefined || !deepEqual(queued.to, diff.to)) return true;
+  private entryBelongsToEffect(entry: JournalEntry, effectId: string): boolean {
+    if (entry.effectId !== effectId) return false;
+    if (typeof location !== "undefined") {
+      try {
+        const page = new URL(entry.page, location.href);
+        if (
+          page.origin !== location.origin ||
+          page.pathname !== location.pathname ||
+          page.search !== location.search
+        )
+          return false;
+      } catch {
+        return false;
+      }
     }
-    return this.hasPendingCorrections(effectId);
+    const node = this.bridge.getNode(effectId);
+    if (node === undefined) return false;
+    if (entry.mwId !== undefined) return ensureStableId(node) === entry.mwId;
+    // Legacy entries predate the durable mwId. Keep their compatibility narrow:
+    // the human selector must still resolve to this exact node.
+    if (entry.elementSelector === describeNode(node)) return true;
+    try {
+      return node.matches(entry.elementSelector);
+    } catch {
+      return false;
+    }
+  }
+
+  // Migration/reload path: persisted diffs written before the submitted
+  // boundary existed are classified only when this exact page+element's journal
+  // forms a continuous chain to the retained `to`. Journal data can therefore
+  // make a committed revision inert, but can never manufacture a fresh active
+  // revision in the toolbar.
+  private adoptJournaledDiffs(): void {
+    for (const effect of this.state.getAllEffects()) {
+      const diff = this.diffs.getDiff(effect.id);
+      if (Object.keys(diff).length === 0) continue;
+      const entries = this.entries.filter((entry) =>
+        this.entryBelongsToEffect(entry, effect.id),
+      );
+      const covered: Record<string, Diff> = {};
+      for (const [param, intent] of Object.entries(diff)) {
+        let cursor = intent.from;
+        for (const entry of entries) {
+          for (const change of entry.changes) {
+            if (change.param !== param || !deepEqual(change.from, cursor))
+              continue;
+            cursor = change.to;
+          }
+        }
+        if (deepEqual(cursor, intent.to)) covered[param] = intent;
+      }
+      this.diffs.markSubmitted(effect.id, covered);
+    }
+  }
+
+  hasCommitDelta(effectId: string): boolean {
+    const hasLocalRevision =
+      this.diffs.hasUnsubmittedDiff(effectId) ||
+      this.hasPendingCorrections(effectId);
+    if (!hasLocalRevision) return false;
+    const inFlight = this.committing.get(effectId);
+    return (
+      inFlight === undefined ||
+      inFlight.signature !== this.currentRevisionSignature(effectId)
+    );
   }
 
   isCommitPending(effectId: string | null): boolean {
@@ -518,7 +683,7 @@ export class OverlaySession {
       (this.committing.has(effectId) ||
         this.entries.some(
           (entry) =>
-            entry.effectId === effectId &&
+            this.entryBelongsToEffect(entry, effectId) &&
             (entry.status === "pending" || entry.status === "agent-working"),
         ))
     );
@@ -561,9 +726,24 @@ export class OverlaySession {
   getEntryStatus(effectId: string | null): JournalEntry["status"] | null {
     if (effectId === null) return null;
     return (
-      [...this.entries].reverse().find((entry) => entry.effectId === effectId)
-        ?.status ?? null
+      [...this.entries]
+        .reverse()
+        .find((entry) => this.entryBelongsToEffect(entry, effectId))?.status ??
+      null
     );
+  }
+
+  getCommitOutcome(effectId: string | null): CommitOutcome | null {
+    if (effectId === null) return null;
+    if (this.committing.has(effectId)) return "in-flight";
+    const own = this.ownCommits.get(effectId);
+    if (own === undefined) return null;
+    const entry = this.entries.find((candidate) => candidate.id === own.id);
+    const status = entry?.status ?? own.status;
+    const error = entry?.error ?? own.error;
+    if (status === "applied") return "applied";
+    if (status === "pending" && error !== undefined) return "prompt";
+    return "in-flight";
   }
 
   buildAgentPrompt(): string {
@@ -614,15 +794,36 @@ export class OverlaySession {
     const effect = this.state.getEffect(effectId);
     if (effect !== undefined) {
       for (const [param, diff] of Object.entries(
-        this.diffs.getDiff(effectId),
+        this.diffs.getUnsubmittedDiff(effectId),
       )) {
-        for (const target of this.matchingTargets(effectId, param)) {
-          restoreLive(target.node, target.binding);
+        if (this.diffs.hasSubmittedValue(effectId, param)) {
+          const submitted = this.diffs.getSubmittedValue(effectId, param);
+          for (const target of this.matchingTargets(effectId, param)) {
+            applyLive(target.node, target.spec, target.binding, submitted);
+          }
+          this.applyOwnChange(effectId, param, submitted);
+          this.diffs.recordChange(effectId, param, diff.to, submitted);
+        } else {
+          for (const target of this.matchingTargets(effectId, param)) {
+            restoreLive(target.node, target.binding);
+          }
+          this.applyOwnChange(effectId, param, diff.from);
+          this.diffs.clearParam(effectId, param);
         }
-        this.applyOwnChange(effectId, param, diff.from);
       }
     }
-    this.diffs.clearEffect(effectId);
+    const corrections = this.pendingCorrections.get(effectId);
+    if (corrections !== undefined) {
+      const submitted = this.submittedCorrections.get(effectId);
+      for (const paramKey of corrections.keys()) {
+        const submittedType = submitted?.get(paramKey);
+        if (submittedType === undefined)
+          this.typeOverrides.clearParam(effectId, paramKey);
+        else this.typeOverrides.set(effectId, paramKey, submittedType);
+      }
+      this.pendingCorrections.delete(effectId);
+      this.notifyPending();
+    }
   }
 
   correctType(
@@ -681,11 +882,11 @@ export class OverlaySession {
         this.applyOwnChange(effectId, param, reconciliation.to);
       }
     }
-    for (const entry of this.entries.filter(
-      (candidate) => candidate.effectId === effectId,
+    for (const entry of this.entries.filter((candidate) =>
+      this.entryBelongsToEffect(candidate, effectId),
     )) {
       const changesClean = entry.changes.every((change) =>
-        deepEqual(change.to, effect.params[change.param]?.value),
+        deepEqual(change.to, baselines[change.param]),
       );
       const correctionsClean = (entry.typeCorrections ?? []).every(
         (correction) =>
@@ -699,6 +900,10 @@ export class OverlaySession {
   private onStateChange(): void {
     if (this.applyingOwnChange) return;
     const current = this.state.getAllEffects();
+    // The first /pending poll and the first registration can arrive in either
+    // order. Re-run the one-way classification here so a hydrated, already
+    // journaled diff never flashes as a fresh decision after registration.
+    this.adoptJournaledDiffs();
     const currentIds = new Set(current.map((effect) => effect.id));
     for (const effect of current) {
       this.restoreSelection(effect);
@@ -709,6 +914,15 @@ export class OverlaySession {
         this.reconcileEffect(effect.id);
       }
       this.typeOverrides.reconcile(effect);
+      const submittedCorrections = this.submittedCorrections.get(effect.id);
+      if (submittedCorrections !== undefined) {
+        for (const [paramKey, submittedType] of submittedCorrections) {
+          if (effect.params[paramKey]?.type === submittedType)
+            submittedCorrections.delete(paramKey);
+        }
+        if (submittedCorrections.size === 0)
+          this.submittedCorrections.delete(effect.id);
+      }
       this.knownEffectIds.add(effect.id);
     }
     for (const id of this.knownEffectIds) {
@@ -754,13 +968,38 @@ export class OverlaySession {
   }
 
   private bumpStylesheetLinks(entry: JournalEntry): void {
+    this.bumpStylesheetsByPaths(
+      new Set([
+        ...(entry.files ?? []),
+        ...entry.changes.flatMap((change) =>
+          change.rule?.sheetHref ? [change.rule.sheetHref] : [],
+        ),
+      ]),
+    );
+  }
+
+  // Re-fetch every stylesheet that currently declares a registered param, so
+  // the tab's CSSOM baseline matches disk again after a daemon restart or any
+  // external source change. Without this, a reconnect leaves the baseline stale
+  // and the next commit's `from` misses the (now different) declaration —
+  // reverting direct writes to copy-prompts.
+  private resyncSourceStylesheets(): void {
     if (typeof document === "undefined") return;
-    const sourcePaths = new Set([
-      ...(entry.files ?? []),
-      ...entry.changes.flatMap((change) =>
-        change.rule?.sheetHref ? [change.rule.sheetHref] : [],
-      ),
-    ]);
+    const hrefs = new Set<string>();
+    for (const effect of this.state.getAllEffects()) {
+      const node = this.bridge.getNode(effect.id);
+      if (node === undefined) continue;
+      for (const spec of Object.values(effect.params)) {
+        if (!spec.bound) continue;
+        const rule = findDeclaringRule(node, spec.var);
+        if (rule?.sheetHref) hrefs.add(rule.sheetHref);
+      }
+    }
+    this.bumpStylesheetsByPaths(hrefs);
+  }
+
+  private bumpStylesheetsByPaths(sourcePaths: Set<string>): void {
+    if (typeof document === "undefined") return;
     if (sourcePaths.size === 0) return;
     const matches = (href: string): boolean => {
       const url = new URL(href, location.href);
@@ -809,5 +1048,12 @@ export class OverlaySession {
     if (connected === this.connected) return;
     this.connected = connected;
     for (const listener of this.connectionListeners) listener(connected);
+    // On a reconnect (daemon restart / dropped socket) the source may have
+    // changed while we were away; re-fetch the backing stylesheets so the
+    // baseline matches disk and direct writes keep working.
+    if (connected) {
+      if (this.hasConnectedBefore) this.resyncSourceStylesheets();
+      this.hasConnectedBefore = true;
+    }
   }
 }

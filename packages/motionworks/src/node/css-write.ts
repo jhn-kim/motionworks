@@ -60,12 +60,14 @@ export interface CssFileIo {
 type JournalChange = JournalEntry["changes"][number];
 type Candidate = { file: string; decl: DeclarationMatch };
 
-function candidatesForValue(
+// All declarations of change.var in the change's declaring rule/file (no value
+// filter). This is the unambiguous-target set: when it has exactly one member,
+// that declaration is THE one to write regardless of its current value.
+function candidatesForVar(
   root: string,
   files: string[],
   sources: Map<string, string>,
   change: JournalChange,
-  css: string,
 ):
   | { kind: "found"; candidates: Candidate[] }
   | { kind: "invalid"; reason: string } {
@@ -75,11 +77,10 @@ function candidatesForValue(
       reason: `Change ${change.param} is not bound to a CSS declaration.`,
     };
   let candidates = files.flatMap((file) =>
-    findDeclarations(sources.get(file)!, change.var!)
-      .filter((decl) =>
-        cssValuesEqual(change.type as ParameterType, decl.value, css),
-      )
-      .map((decl) => ({ file, decl })),
+    findDeclarations(sources.get(file)!, change.var!).map((decl) => ({
+      file,
+      decl,
+    })),
   );
   if (change.rule?.sourceFile !== undefined) {
     const target = resolve(
@@ -102,6 +103,25 @@ function candidatesForValue(
       ({ decl }) => decl.selectorText === change.rule!.selectorText,
     );
   return { kind: "found", candidates };
+}
+
+function candidatesForValue(
+  root: string,
+  files: string[],
+  sources: Map<string, string>,
+  change: JournalChange,
+  css: string,
+):
+  | { kind: "found"; candidates: Candidate[] }
+  | { kind: "invalid"; reason: string } {
+  const base = candidatesForVar(root, files, sources, change);
+  if (base.kind === "invalid") return base;
+  return {
+    kind: "found",
+    candidates: base.candidates.filter((c) =>
+      cssValuesEqual(change.type as ParameterType, c.decl.value, css),
+    ),
+  };
 }
 
 function maskCommentsAndStrings(source: string): string {
@@ -384,11 +404,23 @@ async function applyCssChangesLocked(
     );
     if (found.kind === "invalid")
       return { kind: "skipped", reason: found.reason };
-    const candidates = found.candidates;
+    let candidates = found.candidates;
+    // Stale-baseline fallback: the browser's `from` can drift from the source
+    // (e.g. a tab whose baseline is out of date), so a value match may find
+    // nothing even though the target is obvious. When the var has exactly one
+    // declaration in its rule, that IS the declaration to write — set it to
+    // `toCss` by name regardless of its current value. This keeps direct write
+    // working instead of degrading to a copy-prompt on drift.
+    if (candidates.length !== 1) {
+      const byVar = candidatesForVar(root, files, sources, change);
+      if (byVar.kind === "invalid")
+        return { kind: "skipped", reason: byVar.reason };
+      if (byVar.candidates.length === 1) candidates = byVar.candidates;
+    }
     if (candidates.length !== 1)
       return {
         kind: "skipped",
-        reason: `Expected one declaration for ${change.var} with value ${change.fromCss}; found ${String(candidates.length)}.`,
+        reason: `Expected one declaration for ${change.var}; found ${String(candidates.length)}.`,
       };
     const candidate = candidates[0]!;
     const list = replacements.get(candidate.file) ?? [];

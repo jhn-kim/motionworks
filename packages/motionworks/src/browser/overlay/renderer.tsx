@@ -29,9 +29,8 @@ import { ActivationReveal } from "./activation-reveal.js";
 import { NodeHighlight } from "./highlight.js";
 import {
   useAgentQueue,
+  useCommitOutcome,
   useConnection,
-  useEntryStatus,
-  usePendingCommit,
   useSessionState,
 } from "./hooks.js";
 import { curveForType } from "./scale.js";
@@ -357,9 +356,7 @@ export function resolveVerbAvailability({
   hasCommitDelta,
   editing,
   appliedMarker,
-  committedDiff,
-  pendingApply,
-  entryApplied,
+  commitInFlight,
 }: {
   hasSelection: boolean;
   hasDiff: boolean;
@@ -367,18 +364,13 @@ export function resolveVerbAvailability({
   hasCommitDelta: boolean;
   editing: boolean;
   appliedMarker: boolean;
-  committedDiff: boolean;
-  pendingApply: boolean;
-  entryApplied: boolean;
+  commitInFlight: boolean;
 }): { visible: boolean; localLive: boolean; applyLive: boolean } {
   const hasLocalIntent = hasDiff || hasPendingCorrections;
-  // Once the current revision is already represented by the journal, none
-  // of the local verbs should imply that it is still awaiting a decision.
-  // A later slider move changes the diff version / commit delta and unlocks
-  // the verbs again for that genuinely new revision.
-  const submittedCurrentIntent =
-    !hasCommitDelta || (committedDiff && (pendingApply || entryApplied));
-  const localLive = hasSelection && hasLocalIntent && !submittedCurrentIntent;
+  // `hasCommitDelta` comes from the explicit submitted-revision boundary in
+  // DiffStore. Journal history is intentionally not consulted here: it may
+  // keep live intent around for reconciliation, but cannot light these verbs.
+  const localLive = hasSelection && hasLocalIntent && hasCommitDelta;
   // Verbs act on an uncommitted local intent. Once the entry is in the
   // journal (agent-working, applied, or pending-with-error) there is
   // nothing for Apply or Discard to do — revert lives in the CLI. Ghost
@@ -387,7 +379,7 @@ export function resolveVerbAvailability({
   return {
     visible: hasSelection && (localLive || editing || appliedMarker),
     localLive,
-    applyLive: localLive,
+    applyLive: localLive && !commitInFlight,
   };
 }
 
@@ -475,38 +467,13 @@ export function DynamicToolbox({
     }
   }, [queueChangeCount]);
   const effectId = selectedEffect?.id ?? null;
-  const entryStatus = useEntryStatus(effectId);
-  const pendingApply = usePendingCommit(effectId);
-  const [appliedMarker, setAppliedMarker] = useState(false);
-  const commitVersionRef = useRef<number | null>(null);
-  // Snapshot of the scoped diff at the moment Apply was pressed. "Already
-  // submitted" is latched on this content signature rather than the diff
-  // VERSION: during the commit round-trip the version can bump for reasons
-  // that are not a real edit (the direct CSS write re-reads the baseline),
-  // and a version-based check would briefly re-light the verbs — the flash.
-  // A content latch only releases when the diff genuinely changes again.
-  const committedDiffSignatureRef = useRef<string | null>(null);
-  const appliedDiffRef = useRef<string | null>(null);
-  const handledAppliedRef = useRef(false);
-  useEffect(() => {
-    if (entryStatus !== "applied") {
-      handledAppliedRef.current = false;
-      setAppliedMarker(false);
-      return;
-    }
-    if (
-      effectId === null ||
-      pendingApply ||
-      commitVersionRef.current === null ||
-      handledAppliedRef.current
-    )
-      return;
-    handledAppliedRef.current = true;
-    appliedDiffRef.current = JSON.stringify(session.diffs.getDiff(effectId));
-    setAppliedMarker(true);
-    const timer = window.setTimeout(() => setAppliedMarker(false), 10_000);
-    return () => window.clearTimeout(timer);
-  }, [effectId, entryStatus, pendingApply, session]);
+  const commitOutcome = useCommitOutcome(effectId);
+  // The effect the user applied while it was selected. "Applied" is derived
+  // from this below (`appliedMarker`); it resets on selection change so
+  // returning to an element later shows "Apply" again.
+  const [applyAttemptedFor, setApplyAttemptedFor] = useState<string | null>(
+    null,
+  );
 
   // Which family's slider panel is expanded (one at a time), and which
   // non-scalar editor (gradient / easing curve / path) is showing.
@@ -527,11 +494,7 @@ export function DynamicToolbox({
   );
 
   useEffect(() => {
-    commitVersionRef.current = null;
-    committedDiffSignatureRef.current = null;
-    appliedDiffRef.current = null;
-    handledAppliedRef.current = false;
-    setAppliedMarker(false);
+    setApplyAttemptedFor(null);
     setComparing(false);
     // Everything tool-shaped resets on selection change — panel, editor,
     // and the layers list all belong to the previous selection.
@@ -584,15 +547,6 @@ export function DynamicToolbox({
     () => session.diffs.getVersion(),
     () => 0,
   );
-  useEffect(() => {
-    if (
-      appliedMarker &&
-      effectId !== null &&
-      session.diffs.hasDiff(effectId) &&
-      appliedDiffRef.current !== JSON.stringify(session.diffs.getDiff(effectId))
-    )
-      setAppliedMarker(false);
-  }, [appliedMarker, diffVersion, effectId, session]);
   useSyncExternalStore(
     (l) => session.typeOverrides.subscribe(l),
     () => session.typeOverrides.getVersion(),
@@ -624,28 +578,48 @@ export function DynamicToolbox({
         );
   const scopedEffectIds = scoped.map(({ effect }) => effect.id);
   const changedEffectIds = scopedEffectIds.filter(
-    (id) => session.diffs.hasDiff(id) || session.hasPendingCorrections(id),
+    (id) =>
+      session.diffs.hasUnsubmittedDiff(id) || session.hasPendingCorrections(id),
   );
-  const hasDiff = scopedEffectIds.some((id) => session.diffs.hasDiff(id));
+  const hasDiff = scopedEffectIds.some((id) =>
+    session.diffs.hasUnsubmittedDiff(id),
+  );
   const hasPendingCorrections = scopedEffectIds.some((id) =>
     session.hasPendingCorrections(id),
   );
   const hasCommitDelta = changedEffectIds.some((id) =>
     session.hasCommitDelta(id),
   );
-  const pendingApplyInScope = scopedEffectIds.some((id) =>
-    session.isCommitPending(id),
-  );
-  const appliedEntryInScope =
-    changedEffectIds.length > 0 &&
-    changedEffectIds.every((id) => session.getEntryStatus(id) === "applied");
   const changedEffectSignature = changedEffectIds.join("|");
   const comparedEffectIds = scopedEffectIds.filter((id) =>
-    session.diffs.hasDiff(id),
+    session.diffs.hasUnsubmittedDiff(id),
   );
   const comparedEffectSignature = comparedEffectIds.join("|");
   const timingInScope = scoped.some((e) => e.timingParams.length > 0);
   const effectCount = sessionState.effects.length;
+
+  // `applyAttemptedFor` is set to the effect the moment the user presses Apply
+  // (in the button's onClick) and cleared on a new edit or on selection change
+  // (reset effect). Every apply-outcome marker is derived from it, so the verbs
+  // only ever light for an apply the user JUST made this selection — never on a
+  // bare re-select or for a historical journal entry after a refresh.
+  const attemptedThisSelection = applyAttemptedFor === effectId;
+  //   appliedMarker    → this-selection apply reached source ("Applied")
+  //   needsPromptMarker → this-selection apply fell to the copy-prompt
+  // Both drop the moment a fresh delta appears (hasCommitDelta), so a new slider
+  // move immediately re-enables "Apply changes".
+  const appliedMarker =
+    attemptedThisSelection && commitOutcome === "applied" && !hasCommitDelta;
+  const needsPromptMarker =
+    attemptedThisSelection && commitOutcome === "prompt" && !hasCommitDelta;
+  const inFlightMarker =
+    attemptedThisSelection && commitOutcome === "in-flight" && !hasCommitDelta;
+
+  // A genuinely new edit clears the latch → back to "Apply changes".
+  useEffect(() => {
+    if (hasCommitDelta)
+      setApplyAttemptedFor((cur) => (cur === effectId ? null : cur));
+  }, [hasCommitDelta, effectId]);
 
   useEffect(() => {
     if (!comparing || comparedEffectIds.length === 0) return;
@@ -678,15 +652,6 @@ export function DynamicToolbox({
     // so the bar's width is frozen for the whole editing session and the
     // first edit lights them up in place instead of shifting the layout.
     const editing = openFamily !== null || openEditor !== null;
-    // Content signature of the current scoped diff; compared against the
-    // snapshot taken at Apply so version churn during the round-trip cannot
-    // flip "already submitted" and re-light the verbs.
-    const scopedDiffSignature = changedEffectIds
-      .map((id) => `${id}:${JSON.stringify(session.diffs.getDiff(id))}`)
-      .join("|");
-    const committedDiff =
-      committedDiffSignatureRef.current !== null &&
-      committedDiffSignatureRef.current === scopedDiffSignature;
     const verbAvailability = resolveVerbAvailability({
       hasSelection,
       hasDiff,
@@ -694,11 +659,15 @@ export function DynamicToolbox({
       hasCommitDelta,
       editing,
       appliedMarker,
-      committedDiff,
-      pendingApply: pendingApplyInScope,
-      entryApplied: appliedEntryInScope,
+      commitInFlight: commitOutcome === "in-flight",
     });
-    const verbsVisible = verbAvailability.visible;
+    // Also keep the verb row present in the needs-prompt state so the Apply
+    // button can show "Apply requires prompt copy" instead of vanishing.
+    const verbsVisible =
+      verbAvailability.visible ||
+      needsPromptMarker ||
+      inFlightMarker ||
+      appliedMarker;
     const localVerbsLive = verbAvailability.localLive;
     const applyLive = verbAvailability.applyLive;
     // Play is always available on a selection, resolved in priority order:
@@ -809,18 +778,28 @@ export function DynamicToolbox({
         },
         {
           id: "apply",
+          // A fresh delta (applyLive) always takes precedence, so a new slider
+          // move re-lights "Apply changes" even while a needs-prompt entry sits
+          // in the queue. Needs-prompt goes straight to its final label — no
+          // transient "Applying…" step.
           label: appliedMarker
             ? "Applied"
             : applyLive
               ? "Apply changes"
-              : pendingApplyInScope && !hasCommitDelta
-                ? "Apply — changes already queued"
-                : "Apply — make a change first",
+              : needsPromptMarker
+                ? "Apply requires prompt copy"
+                : inFlightMarker
+                  ? "Applying…"
+                  : "Apply — make a change first",
           kind: "verb",
           icon: ICONS.apply,
           tint: "rgb(126, 224, 140)",
           hoverColor: "rgb(168, 242, 180)",
-          disabled: !applyLive || appliedMarker,
+          // Clickable only with a fresh delta. Needs-prompt is inert (hoverable,
+          // not natively disabled) so its chip explains the manual-handoff; a new
+          // edit flips applyLive true and makes it clickable again.
+          disabled: !applyLive && !needsPromptMarker,
+          inert: needsPromptMarker,
           selected: appliedMarker,
           pulse: appliedMarker,
           onClick: () => {
@@ -829,11 +808,9 @@ export function DynamicToolbox({
               if (session.commit(id)) committed = true;
             }
             if (committed) {
-              commitVersionRef.current = session.diffs.getVersion();
-              committedDiffSignatureRef.current = scopedDiffSignature;
-              appliedDiffRef.current = null;
-              handledAppliedRef.current = false;
-              setAppliedMarker(false);
+              // Latch this selection as "just applied"; the outcome (Applied vs
+              // Apply-requires-prompt) is derived from journal signals above.
+              setApplyAttemptedFor(effectId);
             }
           },
         },
@@ -967,10 +944,9 @@ export function DynamicToolbox({
     effectCount,
     timingInScope,
     appliedMarker,
+    needsPromptMarker,
+    inFlightMarker,
     diffVersion,
-    pendingApplyInScope,
-    entryStatus,
-    appliedEntryInScope,
     changedEffectSignature,
     agentQueue.length,
     agentPromptCopied,
@@ -1456,7 +1432,9 @@ function Launcher({
         color: "rgba(255, 255, 255, 0.95)",
         cursor: opening ? "default" : "grab",
         pointerEvents: "auto",
-        zIndex: 9998,
+        // Matches the open toolbar: always the top toolbar surface, above the
+        // selection highlight (9999).
+        zIndex: 10000,
         padding: 0,
         touchAction: "none",
         transition:

@@ -2,7 +2,6 @@ import { useSyncExternalStore } from "react";
 
 import { useOverlaySession } from "./context.js";
 import type { MotionWorksStateSnapshot } from "../../shared/index.js";
-import type { JournalStatus } from "../../shared/index.js";
 
 // Subscribes to the state manager and returns a live snapshot. Uses the
 // session's cached snapshot so useSyncExternalStore sees the same
@@ -25,16 +24,6 @@ export function useConnection(): boolean {
   );
 }
 
-export function usePendingCommit(effectId: string | null): boolean {
-  const session = useOverlaySession();
-  useSyncExternalStore(
-    (listener) => session.subscribePending(listener),
-    () => session.getPendingVersion(),
-    () => 0,
-  );
-  return session.isCommitPending(effectId);
-}
-
 export function useAgentQueue(): {
   id: string;
   effectId: string;
@@ -51,12 +40,14 @@ export function useAgentQueue(): {
   return session.getAgentQueue();
 }
 
-export function useEntryStatus(effectId: string | null): JournalStatus | null {
+export function useCommitOutcome(
+  effectId: string | null,
+): "in-flight" | "prompt" | "applied" | null {
   const session = useOverlaySession();
   useSyncExternalStore(
     (listener) => session.subscribePending(listener),
     () => session.getPendingVersion(),
     () => 0,
   );
-  return session.getEntryStatus(effectId);
+  return session.getCommitOutcome(effectId);
 }

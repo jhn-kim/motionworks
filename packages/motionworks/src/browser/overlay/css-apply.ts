@@ -263,6 +263,10 @@ export interface DeclaringRule {
   // agent can flag a global edit instead of treating it as local.
   matchedCount: number;
   scope: "single" | "shared";
+  // The winning rule's declared value for the looked-up property (var() intact,
+  // as authored). Lets callers inspect e.g. an `animation` shorthand for a
+  // var() timing token without re-resolving the cascade.
+  value: string;
 }
 
 // Pseudo-ELEMENTS a rule can target. `closest()`/`matches()` reject a selector
@@ -347,6 +351,7 @@ export function findDeclaringRule(
         selectorText: string;
         sheetHref: string;
         sourceFile?: string;
+        value: string;
         candidate: Candidate;
       }
     | undefined;
@@ -382,6 +387,7 @@ export function findDeclaringRule(
             ...(owner?.dataset.viteDevId !== undefined && {
               sourceFile: owner.dataset.viteDevId,
             }),
+            value: rule.style.getPropertyValue(varName),
             candidate,
           };
         } catch {
@@ -419,7 +425,77 @@ export function findDeclaringRule(
     ...(winner.sourceFile !== undefined && { sourceFile: winner.sourceFile }),
     matchedCount,
     scope: matchedCount > 1 ? "shared" : "single",
+    value: winner.value,
   };
+}
+
+// If an auto-detected animation's timing value is supplied by a custom property
+// — either as an `animation-<role>` longhand (`animation-delay: var(--d)`) or a
+// token inside the `animation` shorthand (`animation: spin 2s var(--d)`) — this
+// returns that custom property (and the unit it's authored in). The caller can
+// bind directly when the property is in the daemon's writable namespace, or
+// retain the unit while falling back to an allowed timing longhand for agent
+// hand-off. When the value is a literal, a keyword, or otherwise not a single
+// var(), returns undefined and the caller keeps the longhand binding.
+export function resolveAnimationTimingVar(
+  node: HTMLElement,
+  role: "duration" | "delay" | "easing",
+): { var: string; unit: string } | undefined {
+  const varOf = (raw: string): string | undefined => {
+    const match = /^var\(\s*(--[A-Za-z0-9_-]+)/.exec(raw.trim());
+    return match?.[1];
+  };
+  const unitOf = (name: string): string => {
+    const resolved = getComputedStyle(node).getPropertyValue(name).trim();
+    return resolved.endsWith("ms") ? "ms" : resolved.endsWith("s") ? "s" : "ms";
+  };
+  // 1) Authored as the longhand directly.
+  const longhand = `animation-${role === "easing" ? "timing-function" : role}`;
+  const lh = findDeclaringRule(node, longhand);
+  if (lh !== undefined) {
+    const name = varOf(lh.value);
+    if (name !== undefined) return { var: name, unit: unitOf(name) };
+  }
+  // 2) A var() token inside the `animation` shorthand.
+  const shorthand = findDeclaringRule(node, "animation");
+  if (shorthand === undefined) return undefined;
+  const tokens = topLevelAnimationTokens(shorthand.value);
+  if (tokens === null) return undefined; // multi-animation list — leave it
+  const TIME = /^-?(?:\d+\.?\d*|\.\d+)m?s$/i;
+  const isVar = (t: string): boolean => t.startsWith("var(");
+  const timeLike = tokens.filter((t) => TIME.test(t) || isVar(t));
+  let token: string | undefined;
+  if (role === "duration") token = timeLike[0];
+  else if (role === "delay") token = timeLike[1];
+  else
+    token = tokens.find(
+      (t) =>
+        t.startsWith("cubic-bezier(") || t.startsWith("steps(") || isVar(t),
+    );
+  if (token === undefined) return undefined;
+  const name = varOf(token);
+  return name === undefined ? undefined : { var: name, unit: unitOf(name) };
+}
+
+// Split an `animation` shorthand into top-level, whitespace-separated tokens,
+// keeping parenthesised groups (cubic-bezier(), steps(), var()) whole. Returns
+// null for a comma-separated multi-animation list, whose sub-values can't be
+// mapped to one element unambiguously.
+function topLevelAnimationTokens(value: string): string[] | null {
+  const tokens: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of value.trim()) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (ch === "," && depth === 0) return null;
+    if (depth === 0 && /\s/.test(ch)) {
+      if (current !== "") tokens.push(current);
+      current = "";
+    } else current += ch;
+  }
+  if (current !== "") tokens.push(current);
+  return tokens;
 }
 
 export function watchStylesheets(cb: () => void): () => void {
