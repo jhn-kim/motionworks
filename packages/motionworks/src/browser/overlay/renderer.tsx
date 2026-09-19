@@ -597,6 +597,7 @@ export function DynamicToolbox({
   const comparedEffectSignature = comparedEffectIds.join("|");
   const timingInScope = scoped.some((e) => e.timingParams.length > 0);
   const effectCount = sessionState.effects.length;
+  const hasNestedLayers = scoped.length > 1;
 
   // `applyAttemptedFor` is set to the effect the moment the user presses Apply
   // (in the button's onClick) and cleared on a new edit or on selection change
@@ -855,11 +856,10 @@ export function DynamicToolbox({
       onClick: onToggleSelect,
     });
 
-    // Layers/browse is always present: with a selection it scopes to the
-    // nested animations; without one it lists every animation on the page.
+    // Leaf selections use the page navigator; nested selections keep their scope.
     result.push({
       id: "layers",
-      label: hasSelection
+      label: hasNestedLayers
         ? "Layers — animations in this selection"
         : "Animations on this page",
       kind: "action",
@@ -942,6 +942,7 @@ export function DynamicToolbox({
     comparing,
     showLayers,
     effectCount,
+    hasNestedLayers,
     timingInScope,
     appliedMarker,
     needsPromptMarker,
@@ -1120,13 +1121,13 @@ export function DynamicToolbox({
   };
 
   const openPanels: React.ReactNode[] = [];
-  // The layers button toggles the navigator: the page-wide inventory when
-  // nothing is selected, the selection-scoped layers list otherwise.
+  // Only scope navigation when the selection has other layers to navigate to.
   if (showLayers) {
-    if (selectedEffect === null) {
+    if (selectedEffect === null || !hasNestedLayers) {
       openPanels.push(
         <ElementsPanel
           key="__elements"
+          selectedEffectId={selectedEffect?.id}
           onJump={(id, node) => {
             session.selectEffect(id, node ?? undefined);
           }}

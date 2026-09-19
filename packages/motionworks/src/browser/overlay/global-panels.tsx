@@ -262,10 +262,12 @@ export function LayersPanel({
 // are hard to find by pointing (offscreen, tiny, or stacked).
 
 export function ElementsPanel({
+  selectedEffectId,
   onJump,
   onHover,
   adoption,
 }: {
+  selectedEffectId?: string;
   onJump: (effectId: string, node: HTMLElement | null) => void;
   onHover: (info: { node: HTMLElement; label: string } | null) => void;
   // JS-driven animations (GSAP) MotionWorks can detect but not edit directly,
@@ -342,12 +344,14 @@ export function ElementsPanel({
           <MagnifyList>
             {entries.map(({ effect, nodes }) => {
               const node = nodes[0] ?? null;
+              const isSelected = effect.id === selectedEffectId;
               return (
                 <button
                   key={effect.id}
+                  data-motionworks-list-selected={isSelected ? "" : undefined}
                   type="button"
                   onClick={() => {
-                    onJump(effect.id, node);
+                    if (!isSelected) onJump(effect.id, node);
                   }}
                   onPointerEnter={() => {
                     if (node !== null) {
@@ -357,17 +361,23 @@ export function ElementsPanel({
                   onPointerLeave={() => {
                     onHover(null);
                   }}
-                  title="Click to edit this animation"
+                  title={
+                    isSelected
+                      ? "Currently selected"
+                      : "Click to edit this animation"
+                  }
                   style={{
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "flex-start",
                     gap: 1,
                     border: "none",
-                    borderLeft: "2px solid rgba(255, 255, 255, 0.15)",
+                    borderLeft: isSelected
+                      ? "2px solid rgba(255, 255, 255, 0.85)"
+                      : "2px solid rgba(255, 255, 255, 0.15)",
                     background: "transparent",
                     padding: "2px 0 2px 8px",
-                    cursor: "pointer",
+                    cursor: isSelected ? "default" : "pointer",
                     textAlign: "left",
                   }}
                 >

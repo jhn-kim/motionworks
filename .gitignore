@@ -54,6 +54,10 @@ autoresearch/
 
 # local demo/recording tool (gifs & clips), not published
 demo/
+demo*/
+demos/
+/MotionWorks_Demo*
+/demo*.gif
 
 # packed tarballs (local testing)
 *.tgz

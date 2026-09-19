@@ -229,7 +229,16 @@ export function SelectionEngine({
 
   if (!active) return null;
 
-  const showHover = hover !== null && hover.node !== selectedNode;
+  // Hover outlines the outermost registered ancestor under the pointer. Once
+  // the designer has drilled into a nested effect, the pointer is still inside
+  // that ancestor, so without this guard the parent's hover outline would sit
+  // on top of the child's selection outline for as long as the pointer stays
+  // in the card. Suppress hover while it would only re-outline what the
+  // selection is nested in; moving onto a sibling effect still outlines it.
+  const showHover =
+    hover !== null &&
+    hover.node !== selectedNode &&
+    (selectedNode === null || !hover.node.contains(selectedNode));
   const nameById = (id: string | null): string | undefined => {
     if (id === null) return undefined;
     const effect = state.effects.find((e) => e.id === id);

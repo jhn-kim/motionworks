@@ -376,3 +376,88 @@ describe("editing verb availability", () => {
     node.remove();
   });
 });
+
+describe("Layers navigation", () => {
+  it.each(["leaf", "nested", "none"] as const)(
+    "uses the expected navigation scope for a %s selection",
+    (selection) => {
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe(): void {}
+          disconnect(): void {}
+        },
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify([]))),
+      );
+      const parent = document.createElement("div");
+      const child = document.createElement("div");
+      const sibling = document.createElement("div");
+      parent.append(child);
+      document.body.append(parent, sibling);
+      const session = new OverlaySession({
+        daemonUrl: "http://127.0.0.1:59999",
+      });
+      session.start();
+      const registrations = [
+        { id: "layers-parent#1", name: "Parent", node: parent },
+        { id: "layers-child#1", name: "Child", node: child },
+        { id: "layers-sibling#1", name: "Sibling", node: sibling },
+      ];
+      for (const { id, name, node } of registrations) {
+        getBridge().register(id, node, { name, params: {} });
+      }
+      const id = selection === "nested" ? "layers-parent#1" : "layers-child#1";
+      const jump = vi.spyOn(session, "selectEffect");
+      try {
+        render(
+          <OverlaySessionContext.Provider value={session}>
+            <DynamicToolbox
+              selectedEffect={
+                selection === "none" ? null : session.state.getEffect(id)!
+              }
+              dock="bottom"
+              onDockChange={() => undefined}
+              onClose={() => undefined}
+            />
+          </OverlaySessionContext.Provider>,
+        );
+        fireEvent.click(
+          screen.getByRole("button", {
+            name:
+              selection === "nested"
+                ? "Layers — animations in this selection"
+                : "Animations on this page",
+          }),
+        );
+        expect(screen.getByRole("button", { name: "Parent" })).toBeTruthy();
+        const childRow = screen.getByRole("button", {
+          name: "Child",
+        });
+        expect(childRow).toBeTruthy();
+        if (selection === "nested") {
+          expect(screen.queryByRole("button", { name: "Sibling" })).toBeNull();
+        } else {
+          if (selection === "leaf") {
+            expect(
+              childRow.hasAttribute("data-motionworks-list-selected"),
+            ).toBe(true);
+            fireEvent.click(childRow);
+            expect(jump).not.toHaveBeenCalled();
+          }
+          fireEvent.click(screen.getByRole("button", { name: "Sibling" }));
+          expect(jump).toHaveBeenCalledWith("layers-sibling#1", sibling);
+        }
+      } finally {
+        cleanup();
+        for (const { id, node } of registrations)
+          getBridge().unregister(id, node);
+        session.stop();
+        parent.remove();
+        sibling.remove();
+      }
+    },
+  );
+});
